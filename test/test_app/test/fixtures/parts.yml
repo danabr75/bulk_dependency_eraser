@@ -1,0 +1,47 @@
+---
+parts_001:
+  id: 1
+  partable_id: 1
+  partable_type: Vehicle
+  name: "Engine"
+parts_002:
+  id: 2
+  partable_id: 1
+  partable_type: Part
+  name: "Alternator"
+parts_003:
+  id: 3
+  partable_id: 1
+  partable_type: Part
+  name: "Radiator"
+parts_004:
+  id: 4
+  partable_id: 1
+  partable_type: Part
+  name: "Battery"
+parts_005:
+  id: 5
+  partable_id: 1
+  partable_type: Vehicle
+  name: "Frame"
+parts_006:
+  id: 6
+  partable_id: 3
+  partable_type: Part
+  name: "Radiator Fluid"
+parts_007:
+  id: 7
+  partable_id: 4
+  partable_type: Part
+  name: "Battery Case"
+parts_008:
+  id: 8
+  partable_id: 7
+  partable_type: Part
+  name: "Battery Case Handle"
+parts_009:
+  id: 9
+  partable_id: 4
+  partable_type: Vehicle
+  name: "Engine"
+

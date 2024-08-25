@@ -1,0 +1,5 @@
+require_relative 'bulk_dependency_eraser/base'
+require_relative 'bulk_dependency_eraser/builder'
+require_relative 'bulk_dependency_eraser/deleter'
+require_relative 'bulk_dependency_eraser/nullifier'
+require_relative 'bulk_dependency_eraser/manager'

@@ -1,0 +1,13 @@
+---
+users_vehicles_001:
+  user_id: 1
+  vehicle_id: 1
+users_vehicles_002:
+  user_id: 2
+  vehicle_id: 1
+users_vehicles_003:
+  user_id: 1
+  vehicle_id: 2
+users_vehicles_004:
+  user_id: 2
+  vehicle_id: 2

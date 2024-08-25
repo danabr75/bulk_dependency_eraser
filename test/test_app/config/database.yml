@@ -1,0 +1,12 @@
+test:
+  adapter: sqlite3
+  database: ":memory:"
+
+# test:
+#   adapter: postgresql
+#   encoding: unicode
+#   database: serializer_database_test
+#   pool: 10
+#   # Can change the database name should you need to, but it'll most likely be the name of your local user.
+#   username: <%= (`whoami`).delete!("\n") %>
+#   password:

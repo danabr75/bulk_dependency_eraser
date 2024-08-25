@@ -1,0 +1,21 @@
+---
+vehicles_001:
+  id: 1
+  make: "Dodge"
+  model: "Caraven"
+  type: "Car"
+vehicles_002:
+  id: 2
+  make: "Tesla"
+  model: "Roadster"
+  type: "Car"
+vehicles_003:
+  id: 3
+  make: "Ford"
+  model: "Firebird"
+  type: "Car"
+vehicles_004:
+  id: 4
+  make: "Honda"
+  model: "Rebel"
+  type: "Motorcycle"
