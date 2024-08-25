@@ -1,0 +1,10 @@
+---
+brands_001:
+  id: 1
+  name: "Ford"
+brands_002:
+  id: 2
+  name: "Honda"
+brands_003:
+  id: 3
+  name: "BMW"

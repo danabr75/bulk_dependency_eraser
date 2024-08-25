@@ -1,0 +1,13 @@
+---
+logos_001:
+  id: 1
+  brand_id:  1
+  brand_name: "Ford"
+logos_002:
+  id: 2
+  brand_id:  1
+  brand_name: "Honda, but contains Ford name"
+logos_003:
+  id: 3
+  brand_id:  3
+  brand_name: "BMW, but contains Ford name"

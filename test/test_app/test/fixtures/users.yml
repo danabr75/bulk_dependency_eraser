@@ -4,8 +4,22 @@ users_001:
   email: "test@test.test"
   first_name: "Ben"
   last_name: "Dana"
+  active: true
 users_002:
   id: 2
   email: "test2@test.test"
   first_name: "Victor"
   last_name: "Frankenstein"
+  active: true
+users_003:
+  id: 3
+  email: "test3@test.test"
+  first_name: "Rob"
+  last_name: "Dana"
+  active: true
+users_004:
+  id: 4
+  email: "test4@test.test"
+  first_name: "Ben"
+  last_name: "Franklin"
+  active: true

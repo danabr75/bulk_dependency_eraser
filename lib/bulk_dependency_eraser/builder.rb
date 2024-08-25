@@ -6,8 +6,12 @@ module BulkDependencyEraser
       # Some associations scopes take parameters.
       # - We would have to instantiate if we wanted to apply that scope filter.
       instantiate_if_assoc_scope_with_arity: false,
-      db_read_wrapper: DEFAULT_DB_WRAPPER,
+      db_read_wrapper: self::DEFAULT_DB_WRAPPER,
     }.freeze
+
+    DEPENDENCY_NULLIFY = %i[
+      nullify
+    ].freeze
 
     DEPENDENCY_RESTRICT = %i[
       restrict_with_error
@@ -19,7 +23,7 @@ module BulkDependencyEraser
         destroy
         delete_all
         destroy_async
-      ] + DEPENDENCY_RESTRICT
+      ] + self::DEPENDENCY_RESTRICT
     ).freeze
 
     DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES = [
@@ -31,7 +35,7 @@ module BulkDependencyEraser
 
     attr_reader :deletion_list, :nullification_list
 
-    def initialize query:, opts:
+    def initialize query:, opts: {}
       @query = query
       @deletion_list  = {}
       @nullification_list = {}
@@ -42,15 +46,17 @@ module BulkDependencyEraser
       begin
         build_result = deletion_query_parser(@query)
 
+        uniqify_errors!
+
         return errors.none?
       rescue StandardError => e
-        if query.is_a?(ActiveRecord::Relation)
-          klass      = query.klass
-          klass_name = query.klass.name
+        if @query.is_a?(ActiveRecord::Relation)
+          klass      = @query.klass
+          klass_name = @query.klass.name
         else
           # current_query is a normal rails class
-          klass      = query
-          klass_name = query.name
+          klass      = @query
+          klass_name = @query.name
         end
         report_error(
           "
@@ -59,6 +65,7 @@ module BulkDependencyEraser
               #{e.message}
           "
         )
+
         return false
       end
     end
@@ -112,24 +119,30 @@ module BulkDependencyEraser
       deletion_list[klass_name] += query_ids
 
       # ignore associations that aren't a dependent destroyable type
-      destroy_associations = query.reflect_on_all_associations.reject do |reflection|
+      destroy_associations = query.reflect_on_all_associations.select do |reflection|
         assoc_dependent_type = reflection.options&.dig(:dependent)&.to_sym
         if DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES.include?(reflection.class.name)
           # Ignore those types of associations.
-          true
+          false
         elsif DEPENDENCY_RESTRICT.include?(assoc_dependent_type) && opts_c.force_destroy_restricted != true
           # If the dependency_type is restricted_with_..., and we're not supposed to destroy those, report errork
-          report_error("#{klass_name}")
-          # reject
-          true
+          report_error(
+            "#{klass_name}'s assoc '#{reflection.name}' has a 'dependent: :#{assoc_dependent_type}' set. " \
+            "If you still wish to destroy, use the 'force_destroy_restricted: true' option"
+          )
+          false
         else
-          !DEPENDENCY_DESTROY.include?(assoc_dependent_type)
+          if DEPENDENCY_DESTROY.include?(assoc_dependent_type)
+            puts "DESTROYABLE ASSOC: #{reflection.name}"
+            puts reflection.options.inspect
+            true
+          end
         end
       end
 
-      nullify_associations = query.reflect_on_all_associations.reject do |reflection|
+      nullify_associations = query.reflect_on_all_associations.select do |reflection|
         assoc_dependent_type = reflection.options&.dig(:dependent)&.to_sym
-        !DEPENDENCY_DESTROY.include?(assoc_dependent_type)
+        DEPENDENCY_NULLIFY.include?(assoc_dependent_type)
       end
 
       destroy_association_names = destroy_associations.map(&:name)
@@ -241,6 +254,8 @@ module BulkDependencyEraser
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
       end
 
+      puts "specified_foreign_key: #{specified_foreign_key} - #{specified_foreign_key.class.name}"
+
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
         deletion_query_parser(assoc_query, parent_class)
@@ -250,9 +265,11 @@ module BulkDependencyEraser
         assoc_ids = read_from_db do
           assoc_query.pluck(:id)
         end
-        nullification_list[assoc_klass] ||= {}
-        nullification_list[assoc_klass][specified_foreign_key] ||= []
-        nullification_list[assoc_klass][specified_foreign_key] += assoc_ids
+        # puts "FOUND IDS: #{assoc_ids.insect}"
+        nullification_list[assoc_klass.name] ||= {}
+        nullification_list[assoc_klass.name][specified_foreign_key] ||= []
+        nullification_list[assoc_klass.name][specified_foreign_key] += assoc_ids
+        nullification_list[assoc_klass.name][specified_foreign_key].uniq!
       else
         raise "invalid parsing type: #{type}"
       end

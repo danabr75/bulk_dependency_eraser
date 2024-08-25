@@ -14,8 +14,10 @@ EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD = %w[
   schema_migrations
   version_associations
 ]
-ALL_DATABASE_TABLES = ActiveRecord::Base.connection.tables.reject do |table|
-  EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD.include?(table) || !File.exist?(Rails.root.join("test", "fixtures", "#{table}.yml"))
+ALL_DATABASE_TABLES = -> do
+  ActiveRecord::Base.connection.tables.reject do |table|
+    EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD.include?(table) || !File.exist?(Rails.root.join("test", "fixtures", "#{table}.yml"))
+  end
 end
 
 if Rails.configuration.database_configuration[Rails.env]['database'] == ':memory:'

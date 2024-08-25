@@ -7,7 +7,7 @@ module BulkDependencyEraser
     delegate :nullification_list, :deletion_list, to: :dependency_builder
 
     # @param query [ActiveRecord::Base | ActiveRecord::Relation]
-    def initialize(query:, opts: {})
+    def initialize query:, opts: {}
       @opts = opts
       @dependency_builder = BulkDependencyEraser::Builder.new(query:, opts:)
       @deleter   = nil

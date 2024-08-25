@@ -2,7 +2,7 @@ module BulkDependencyEraser
   class Nullifier < Base
     DEFAULT_OPTS = {
       verbose: false,
-      db_nullify_wrapper: DEFAULT_DB_WRAPPER
+      db_nullify_wrapper: self::DEFAULT_DB_WRAPPER
     }.freeze
 
     # @param class_names_columns_and_ids [Hash] - model names with columns to nullify pointing towards the record IDs that require the nullification.
@@ -13,7 +13,7 @@ module BulkDependencyEraser
     #      }
     #    }
     # @param opts [Hash] - hash of options, allowlisted in DEFAULT_OPTS
-    def initialize class_names_columns_and_ids:, opts:
+    def initialize class_names_columns_and_ids:, opts: {}
       @class_names_columns_and_ids = class_names_columns_and_ids
       super(opts:)
     end

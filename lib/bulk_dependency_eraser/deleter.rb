@@ -2,7 +2,7 @@ module BulkDependencyEraser
   class Deleter < Base
     DEFAULT_OPTS = {
       verbose: false,
-      db_delete_wrapper: DEFAULT_DB_WRAPPER,
+      db_delete_wrapper: self::DEFAULT_DB_WRAPPER,
     }.freeze
 
     def initializer class_names_and_ids: {}, opts: {}

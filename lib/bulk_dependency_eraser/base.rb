@@ -1,23 +1,16 @@
 module BulkDependencyEraser
   class Base
-    DEFAULT_OPTS = {test: nil}.freeze
+    DEFAULT_OPTS = {}.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) { block.call }
-
-    OPTIONS_CONTAINER = Struct.new(
-      *DEFAULT_OPTS.keys,
-      keyword_init: true
-    )
 
     attr_reader :errors
 
     def initialize opts: {}
       filtered_opts = opts.slice(*self.class::DEFAULT_OPTS.keys)
-      @opts_c = self.class::OPTIONS_CONTAINER.new(
-        **self.class::DEFAULT_OPTS.merge(
-          filtered_opts
-        )
-      ).freeze
+      @opts_c = options_container.new(
+        self.class::DEFAULT_OPTS.merge(filtered_opts)
+      )
       @errors = []
     end
 
@@ -26,6 +19,14 @@ module BulkDependencyEraser
     end
 
     protected
+
+    # Create options container
+    def options_container
+      Struct.new(
+        *self.class::DEFAULT_OPTS.keys,
+        keyword_init: true
+      ).freeze
+    end
 
     def report_error msg
       @errors << msg
@@ -42,6 +43,10 @@ module BulkDependencyEraser
         local_errors = errors.map { |error| prefix + error }
       end
       @errors += local_errors
+    end
+
+    def uniqify_errors!
+      @errors.uniq!
     end
 
     attr_reader :opts_c
