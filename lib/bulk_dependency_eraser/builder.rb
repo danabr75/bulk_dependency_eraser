@@ -124,6 +124,10 @@ module BulkDependencyEraser
       # - can now safely add to the list, since we've prevented infinite recursion
       deletion_list[table_klass_name] += query_ids
 
+      # Hard to test if not sorted
+      # - if we had more advanced rspec matches, we could do away with this.
+      deletion_list[table_klass_name].sort! if Rails.env.test?
+
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
         assoc_dependent_type = reflection.options&.dig(:dependent)&.to_sym
@@ -138,11 +142,7 @@ module BulkDependencyEraser
           )
           false
         else
-          if DEPENDENCY_DESTROY.include?(assoc_dependent_type)
-            puts "DESTROYABLE ASSOC: #{reflection.name}"
-            puts reflection.options.inspect
-            true
-          end
+          DEPENDENCY_DESTROY.include?(assoc_dependent_type)
         end
       end
 
@@ -162,20 +162,6 @@ module BulkDependencyEraser
         find_root_association_from_through_assocs(klass, assoc_name)
       end
 
-      # # TEST HERE, LOOKING FOR THROUGH REFLECTION ASSOCATIONS     
-      # destroy_association_names.each do |dependent_assoc_name|
-      #   puts "dependent_assoc_name: #{dependent_assoc_name}"
-      #   reflection = klass.reflect_on_association(dependent_assoc_name)
-      #   puts reflection.options.inspect
-      #   reflection_type = reflection.class.name
-      #   # assoc_klass = reflection.klass
-      #   if reflection_type == "ActiveRecord::Reflection::ThroughReflection"
-      #     puts "FOUND A REFLECTION THROUGH EHEER"
-      #     puts "#{association_parent} => #{klass_name}"
-      #   end
-      # end
-      # # END TESTE
-
       destroy_association_names.each do |destroy_association_name|
         association_parser(klass, query, query_ids, destroy_association_name, :delete)
       end
@@ -183,7 +169,6 @@ module BulkDependencyEraser
       nullify_association_names.each do |nullify_association_name|
         association_parser(klass, query, query_ids, nullify_association_name, :nullify)
       end
-      # return deletion_list, errors
     end
 
     # Iterate through each destroyable association, and recursively call 'deletion_query_parser'.
@@ -199,20 +184,6 @@ module BulkDependencyEraser
         report_error("#{parent_class.name}'s association '#{association_name}' - assoc class does not use 'id' as a primary_key")
         return
       end
-
-      # if DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES.include?(reflection_type)
-      #   msg = "#{klass_name}'s '#{association_name}' assocation => Assocation type '#{reflection_type}' does not support destruction."
-      #   errors << [msg, query_ids]
-      #   next
-      # end
-
-      # Just need to mimic whatever Rails doese here
-      # if reflection_type == "ActiveRecord::Reflection::ThroughReflection"
-      #   msg = "#{klass_name}'s '#{association_name}' assocation - 'dependency' is on a 'through' association. "
-      #   # msg << "This "
-      #   errors << [msg, query_ids]
-      #   next
-      # end
 
       # If there is an association scope present, check to see how many parameters it's using
       # - if there's any parameter, we have to either skip it or instantiate it to find it's dependencies.
@@ -270,8 +241,6 @@ module BulkDependencyEraser
       else
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
       end
-
-      puts "specified_foreign_key: #{specified_foreign_key} - #{specified_foreign_key.class.name}"
 
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies

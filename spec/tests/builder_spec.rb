@@ -4,7 +4,7 @@ RSpec.describe BulkDependencyEraser::Builder do
   fixtures(ALL_DATABASE_TABLES.call)
   let(:model_klass) { User }
   let(:query) { model_klass.where(email: 'test@test.test') }
-  let(:user) { query.first }
+  let!(:user) { query.first }
   let(:params) { {query:} }
   let(:subject) { described_class.new(**params) }
   let(:do_request) { subject.execute }
@@ -51,9 +51,9 @@ RSpec.describe BulkDependencyEraser::Builder do
 
       expect(subject.deletion_list).to eq(
         {
-          "Part" => vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids,
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
-          "Vehicle" => expected_owned_vehicle_ids
+          "Vehicle" => expected_owned_vehicle_ids.sort
         }
       )
     end
@@ -95,9 +95,9 @@ RSpec.describe BulkDependencyEraser::Builder do
 
       expect(subject.deletion_list).to eq(
         {
-          "Part" => vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids,
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
-          "Vehicle" => expected_owned_vehicle_ids
+          "Vehicle" => expected_owned_vehicle_ids.sort
         }
       )
     end
@@ -290,4 +290,8 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.nullification_list.dig("User", "first_name")&.count).to eq(3)
     end
   end
+
+  # TODO:
+  # - need to support instantiation where scopes require it.
+  # context "build dependency tree for User (incl. scope with arity)" do
 end

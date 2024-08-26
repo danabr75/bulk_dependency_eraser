@@ -1,4 +1,4 @@
-# gem build rails_json_serializer.gemspec
+# gem build bulk_dependency_eraser.gemspec
 
 Gem::Specification.new do |s|
   s.name = %q{bulk_dependency_eraser}
@@ -17,12 +17,12 @@ Gem::Specification.new do |s|
   ]
   s.require_paths = ["lib"]
   s.homepage = 'https://github.com/danabr75/bulk_dependency_eraser'
-  s.add_runtime_dependency 'rails', '>= 5.0'
-  s.add_development_dependency 'rails', ['~> 5.0']
+  s.add_runtime_dependency 'rails', '>= 6.1'
+  s.add_development_dependency 'rails', ['~> 6.1']
   s.add_development_dependency "rspec", ["~> 3.9"]
   s.add_development_dependency "listen", ["~> 3.2"]
   s.add_development_dependency "rspec-rails", ["~> 4.0"]
   s.add_development_dependency "database_cleaner", ["~> 1.8"]
   s.add_development_dependency "sqlite3", ["~> 1.4"]
-  s.required_ruby_version = '>= 2.4'
+  s.required_ruby_version = '>= 3.1'
 end

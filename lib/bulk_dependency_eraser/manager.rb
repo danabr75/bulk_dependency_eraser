@@ -61,8 +61,8 @@ module BulkDependencyEraser
 
       unless nullifier_execution
         puts "Nullifier execution FAILED" if opts_c.verbose
-        merge_errors(deleter.errors, 'Nullifier: ')
-        @errors += deleter_errors
+        merge_errors(nullifier.errors, 'Nullifier: ')
+        @errors += nullifier.errors
       else
         puts "Nullifier execution SUCCESSFUL" if opts_c.verbose
       end

@@ -19,6 +19,34 @@ module BulkDependencyEraser
     end
 
     def execute
+      ActiveRecord::Base.transaction do
+        current_class_name = 'N/A'
+        current_column = 'N/A'
+        begin
+          class_names_columns_and_ids.keys.reverse.each do |class_name|
+            current_class_name = class_name
+            klass = class_name.constantize
+
+            columns_and_ids = class_names_columns_and_ids[class_name]
+
+            columns_and_ids.each do |column, ids|
+              current_column = column
+              # Disable any ActiveRecord::InvalidForeignKey raised errors.
+              # src https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
+              #     https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
+              ActiveRecord::Base.connection.disable_referential_integrity do
+                nullify_in_db do
+                  klass.unscoped.where(id: ids).update_all(column => nil)
+                end
+              end
+            end
+          end
+        rescue Exception => e
+          report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.name} - #{e.message}")
+          raise ActiveRecord::Rollback
+        end
+      end
+
       return errors.none?
     end
 
@@ -26,7 +54,7 @@ module BulkDependencyEraser
 
     attr_reader :class_names_columns_and_ids
 
-    def delete_in_db(&block)
+    def nullify_in_db(&block)
       puts "Nullifying from DB..." if opts_c.verbose
       opts_c.db_nullify_wrapper.call(block)
     end
