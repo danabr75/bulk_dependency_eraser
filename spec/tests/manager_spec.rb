@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe BulkDependencyEraser::Builder do
+RSpec.describe BulkDependencyEraser::Manager do
   fixtures(ALL_DATABASE_TABLES.call)
   let(:model_klass) { User }
   let(:query) { model_klass.where(email: 'test@test.test') }
@@ -14,12 +14,15 @@ RSpec.describe BulkDependencyEraser::Builder do
   context "When 'dependency: :destroy' assoc has a join table without an ID column" do
     let(:model_klass) { UserWithIdlessJoinTableDependent }
 
-    it "should raise an error" do
-      expect(model_klass.reflect_on_association(:users_vehicles).options[:dependent]).to eq(:destroy)
 
+    it 'should have the right association dependency' do
+      expect(model_klass.reflect_on_association(:users_vehicles).options[:dependent]).to eq(:destroy)
+    end
+
+    it "should raise an error" do
       aggregate_failures do
         expect(do_request).to be_falsey
-        expect(subject.errors).to eq(["#{model_klass.name}'s association 'users_vehicles' - assoc class does not use 'id' as a primary_key"])
+        expect(subject.errors).to eq(["Builder: #{model_klass.name}'s association 'users_vehicles' - assoc class does not use 'id' as a primary_key"])
       end
     end
   end
@@ -43,7 +46,12 @@ RSpec.describe BulkDependencyEraser::Builder do
       }
     end
 
-    it "should destroy successfully" do
+    it 'should have the right association dependency' do
+      expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
+    end
+
+
+    it "should destroy successfully by rails" do
       query.destroy_all
 
       post_action_snapshot = compare_db_snapshot(init_db_snapshot)
@@ -51,27 +59,34 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)
     end
 
-    it "should mirror the rails destroy" do
-      expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
+    it "should execute and mirror the rails destroy" do
       expect(user.owned_vehicles.count).to eq(4)
 
       aggregate_failures do
         expect(do_request).to be_truthy
         expect(subject.errors).to be_empty
-        expect(subject.deletion_list).to eq(
-          {
-            "Part" => vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids,
-            model_klass.name => [user.id],
-            "Vehicle" => expected_owned_vehicle_ids
-          }
-        )
-        expect(subject.nullification_list).to eq({})
       end
 
-      # USE in manager rspec
-      # post_action_snapshot = compare_db_snapshot(init_db_snapshot)
-      # expect(post_action_snapshot[:added]).to eq({})
-      # expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)      
+      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      expect(post_action_snapshot[:added]).to eq({})
+      expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)      
+    end
+
+
+    it "should populate the deletion list" do
+      do_request
+
+      expect(subject.deletion_list).to eq(
+        {
+          "Part" => vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids,
+          "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids
+        }
+      )
+    end
+
+    it "should populate the nullification list" do
+      expect(subject.nullification_list).to eq({})
     end
   end
 

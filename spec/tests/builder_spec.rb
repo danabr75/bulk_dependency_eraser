@@ -12,9 +12,11 @@ RSpec.describe BulkDependencyEraser::Builder do
   context "When 'dependency: :destroy' assoc has a join table without an ID column" do
     let(:model_klass) { UserWithIdlessJoinTableDependent }
 
-    it "should raise an error" do
+    it 'should have the right association dependency' do
       expect(model_klass.reflect_on_association(:users_vehicles).options[:dependent]).to eq(:destroy)
+    end
 
+    it "should report an error" do
       aggregate_failures do
         expect(do_request).to be_falsey
         expect(subject.errors).to eq(["#{model_klass.name}'s association 'users_vehicles' - assoc class does not use 'id' as a primary_key"])
@@ -33,10 +35,11 @@ RSpec.describe BulkDependencyEraser::Builder do
 
     it 'should have the right association dependency' do
       expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
-      expect(user.owned_vehicles.count).to eq(4)
     end
 
-    it "should build successfully" do
+    it "should execute successfully" do
+      expect(user.owned_vehicles.count).to eq(4)
+
       aggregate_failures do
         expect(do_request).to be_truthy
         expect(subject.errors).to be_empty
