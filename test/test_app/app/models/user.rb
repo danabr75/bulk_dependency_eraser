@@ -14,6 +14,8 @@ class User < ApplicationRecord
   has_many :similarly_named_users, -> { active }, class_name: 'User', foreign_key: :first_name, primary_key: :first_name, dependent: :nullify
 
   # TODO: create friendly_with table, joins users to other users, join table with ID use-case
+  has_many :friends
+  has_many :users, through: :friends
 
   scope :active, -> { where(active: true) }
 

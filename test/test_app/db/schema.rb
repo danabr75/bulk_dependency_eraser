@@ -12,6 +12,11 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.boolean "active"
   end
 
+  create_table "friends", id: :serial, force: :cascade do |t|
+    t.bigint "friend_id"
+    t.bigint "user_id"
+  end
+
   create_table "vehicles", id: :serial, force: :cascade do |t|
     t.string "model"
     t.string "type"

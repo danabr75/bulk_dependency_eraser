@@ -80,10 +80,12 @@ module BulkDependencyEraser
       if query.is_a?(ActiveRecord::Relation)
         klass      = query.klass
         klass_name = query.klass.name
+        table_klass_name = query.klass.table_name.classify
       else
         # current_query is a normal rails class
         klass      = query
         klass_name = query.name
+        table_klass_name = query.table_name.classify
       end
 
       if opts_c.verbose
@@ -106,21 +108,21 @@ module BulkDependencyEraser
         query.pluck(:id)
       end
 
-      deletion_list[klass_name] ||= []
+      deletion_list[table_klass_name] ||= []
 
       # prevent infinite recursion here.
       # - Remove any IDs that have been processed before
-      query_ids = query_ids - deletion_list[klass_name]
+      query_ids = query_ids - deletion_list[table_klass_name]
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
         # quick cleanup, if turns out was an empty class
-        deletion_list.delete(klass_name) if deletion_list[klass_name].none?
+        deletion_list.delete(table_klass_name) if deletion_list[table_klass_name].none?
         return
       end
 
       # Use-case: We have more IDs to process
       # - can now safely add to the list, since we've prevented infinite recursion
-      deletion_list[klass_name] += query_ids
+      deletion_list[table_klass_name] += query_ids
 
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
@@ -189,6 +191,7 @@ module BulkDependencyEraser
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
       assoc_klass = reflection.klass
+      assoc_table_klass_name = assoc_klass.table_name.classify
 
       assoc_query = assoc_klass.unscoped
 
@@ -284,10 +287,10 @@ module BulkDependencyEraser
         return if assoc_ids.none?
 
         # puts "FOUND IDS: #{assoc_ids.insect}"
-        nullification_list[assoc_klass.name] ||= {}
-        nullification_list[assoc_klass.name][specified_foreign_key] ||= []
-        nullification_list[assoc_klass.name][specified_foreign_key] += assoc_ids
-        nullification_list[assoc_klass.name][specified_foreign_key].uniq!
+        nullification_list[assoc_table_klass_name] ||= {}
+        nullification_list[assoc_table_klass_name][specified_foreign_key] ||= []
+        nullification_list[assoc_table_klass_name][specified_foreign_key] += assoc_ids
+        nullification_list[assoc_table_klass_name][specified_foreign_key].uniq!
       else
         raise "invalid parsing type: #{type}"
       end

@@ -26,7 +26,6 @@ def compare_db_snapshot original_klasses_and_ids
   deleted = {}
   added   = {}
 
-
   original_klasses_and_ids.each do |klass_name, ids|
     deleted[klass_name] = ids - current_klasses_and_ids[klass_name]
     deleted.delete(klass_name) if deleted[klass_name].none?
