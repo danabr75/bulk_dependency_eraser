@@ -13,9 +13,10 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
   end
 
   create_table "vehicles", id: :serial, force: :cascade do |t|
-    t.string "make"
     t.string "model"
     t.string "type"
+    t.bigint "brand_id"
+    t.bigint "owner_id"
   end
 
   create_table "users_vehicles", id: false, force: :cascade do |t|

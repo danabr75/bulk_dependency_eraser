@@ -9,6 +9,8 @@ RSpec.describe BulkDependencyEraser::Builder do
   let(:subject) { described_class.new(**params) }
   let(:do_request) { subject.execute }
 
+  let!(:init_db_snapshot) { get_db_snapshot }
+
   context "When 'dependency: :destroy' assoc has a join table without an ID column" do
     let(:model_klass) { UserWithIdlessJoinTableDependent }
 
@@ -33,7 +35,23 @@ RSpec.describe BulkDependencyEraser::Builder do
     let!(:nested_parts_b_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_a_ids).pluck(:id) }
     let!(:nested_parts_c_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_b_ids).pluck(:id) }
 
-    it "should build successfully" do
+    let(:expected_db_snapshot_change) do
+      {
+        "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+        "User" => [user.id],
+        "Vehicle" => expected_owned_vehicle_ids.sort,
+      }
+    end
+
+    it "should destroy successfully" do
+      query.destroy_all
+
+      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      expect(post_action_snapshot[:added]).to eq({})
+      expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)
+    end
+
+    it "should mirror the rails destroy" do
       expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
       expect(user.owned_vehicles.count).to eq(4)
 
@@ -48,7 +66,12 @@ RSpec.describe BulkDependencyEraser::Builder do
           }
         )
         expect(subject.nullification_list).to eq({})
-      end    
+      end
+
+      # USE in manager rspec
+      # post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      # expect(post_action_snapshot[:added]).to eq({})
+      # expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)      
     end
   end
 
@@ -56,7 +79,6 @@ RSpec.describe BulkDependencyEraser::Builder do
     # We're expecting the 'UserWithHasManyThroughDependent' to destroy the vehicles, and vehicle dependencies.
     # - not expecting to delete the brands.
     let(:model_klass) { UserWithHasManyThroughDependent }
-    let(:params) {super().merge(opts: {verbose: true})}
 
     let!(:expected_owned_vehicle_ids) { user.owned_vehicles.pluck(:id) }
     let!(:vehicle_part_ids)   { Part.where(partable_type: 'Vehicle', partable_id: expected_owned_vehicle_ids).pluck(:id) }
@@ -64,9 +86,24 @@ RSpec.describe BulkDependencyEraser::Builder do
     let!(:nested_parts_b_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_a_ids).pluck(:id) }
     let!(:nested_parts_c_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_b_ids).pluck(:id) }
 
+    let(:expected_db_snapshot_change) do
+      {
+        "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+        "User" => [user.id],
+        "Vehicle" => expected_owned_vehicle_ids.sort,
+      }
+    end
+
+    it "should destroy successfully" do
+      query.destroy_all
+
+      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      expect(post_action_snapshot[:added]).to eq({})
+      expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)
+    end
 
     # KNOWN_FAILING
-    it "should build successfully" do
+    it "should mirror the rails destroy" do
       # While the dependent is on the :owned_brands, since it's through: :owned_vehicles, :owned_vehicles will be destroyed
       expect(model_klass.reflect_on_association(:owned_brands).options[:dependent]).to eq(:destroy)
       expect(user.owned_brands.count).to eq(4)
@@ -83,6 +120,10 @@ RSpec.describe BulkDependencyEraser::Builder do
         )
         expect(subject.nullification_list).to eq({})
       end
+
+      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      expect(post_action_snapshot[:added]).to eq({})
+      expect(post_action_snapshot[:deleted]).to eq(expected_db_snapshot_change)
     end
   end
 

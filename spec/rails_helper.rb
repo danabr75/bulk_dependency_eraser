@@ -3,7 +3,13 @@ require 'spec_helper'
 require File.expand_path('../../test/test_app/config/environment', __FILE__)
 require 'rspec/rails'
 require 'database_cleaner'
-Dir[Rails.root.join('spec/support/**/*.rb')].each { |f| require f }
+
+Dir[
+  File.join(
+    File.dirname(File.expand_path(__FILE__)),
+    'support/**/*.rb'
+  )
+].each { |f| require f }
 
 EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD = %w[
   schema_info

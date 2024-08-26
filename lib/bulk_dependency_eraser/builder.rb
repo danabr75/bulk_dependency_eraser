@@ -13,6 +13,8 @@ module BulkDependencyEraser
       nullify
     ].freeze
 
+    # Abort deletion if assoc dependency value is any of these.
+    # - exception if the :force_destroy_restricted option set true
     DEPENDENCY_RESTRICT = %i[
       restrict_with_error
       restrict_with_exception
@@ -111,6 +113,8 @@ module BulkDependencyEraser
       query_ids = query_ids - deletion_list[klass_name]
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
+        # quick cleanup, if turns out was an empty class
+        deletion_list.delete(klass_name) if deletion_list[klass_name].none?
         return
       end
 
@@ -148,17 +152,27 @@ module BulkDependencyEraser
       destroy_association_names = destroy_associations.map(&:name)
       nullify_association_names = nullify_associations.map(&:name)
 
-      # TEST HERE, LOOKING FOR THROUGH REFLECTION ASSOCATIONS     
-      destroy_association_names.each do |dependent_assoc_name|
-        reflection = klass.reflect_on_association(dependent_assoc_name)
-        reflection_type = reflection.class.name
-        # assoc_klass = reflection.klass
-        if reflection_type == "ActiveRecord::Reflection::ThroughReflection"
-          puts "FOUND A REFLECTION THROUGH EHEER"
-          puts "#{association_parent} => #{klass_name}"
-        end
+      # Iterate through the assoc names, if there are any :through assocs, then remap 
+      destroy_association_names = destroy_association_names.collect do |assoc_name|
+        find_root_association_from_through_assocs(klass, assoc_name)
       end
-      # END TESTE
+      nullify_association_names = nullify_association_names.collect do |assoc_name|
+        find_root_association_from_through_assocs(klass, assoc_name)
+      end
+
+      # # TEST HERE, LOOKING FOR THROUGH REFLECTION ASSOCATIONS     
+      # destroy_association_names.each do |dependent_assoc_name|
+      #   puts "dependent_assoc_name: #{dependent_assoc_name}"
+      #   reflection = klass.reflect_on_association(dependent_assoc_name)
+      #   puts reflection.options.inspect
+      #   reflection_type = reflection.class.name
+      #   # assoc_klass = reflection.klass
+      #   if reflection_type == "ActiveRecord::Reflection::ThroughReflection"
+      #     puts "FOUND A REFLECTION THROUGH EHEER"
+      #     puts "#{association_parent} => #{klass_name}"
+      #   end
+      # end
+      # # END TESTE
 
       destroy_association_names.each do |destroy_association_name|
         association_parser(klass, query, query_ids, destroy_association_name, :delete)
@@ -265,6 +279,10 @@ module BulkDependencyEraser
         assoc_ids = read_from_db do
           assoc_query.pluck(:id)
         end
+
+        # No assoc_ids, no need to add it to the nullification list
+        return if assoc_ids.none?
+
         # puts "FOUND IDS: #{assoc_ids.insect}"
         nullification_list[assoc_klass.name] ||= {}
         nullification_list[assoc_klass.name][specified_foreign_key] ||= []
@@ -276,6 +294,17 @@ module BulkDependencyEraser
     end
 
     protected
+
+    # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
+    def find_root_association_from_through_assocs klass, association_name
+      reflection = klass.reflect_on_association(association_name)
+      options = reflection.options
+      if options.key?(:through)
+        return find_root_association_from_through_assocs(klass, options[:through])
+      else
+        association_name
+      end
+    end
 
     def read_from_db(&block)
       puts "Reading from DB..." if opts_c.verbose

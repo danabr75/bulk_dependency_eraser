@@ -8,3 +8,9 @@ brands_002:
 brands_003:
   id: 3
   name: "BMW"
+brands_004:
+  id: 4
+  name: "Dodge"
+brands_005:
+  id: 5
+  name: "Tesla"

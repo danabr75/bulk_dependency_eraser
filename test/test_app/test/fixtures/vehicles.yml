@@ -1,21 +1,25 @@
 ---
 vehicles_001:
   id: 1
-  make: "Dodge"
   model: "Caraven"
   type: "Car"
+  brand_id: 4
+  owner_id: 1
 vehicles_002:
   id: 2
-  make: "Tesla"
   model: "Roadster"
   type: "Car"
+  brand_id: 5
+  owner_id: 1
 vehicles_003:
   id: 3
-  make: "Ford"
   model: "Firebird"
   type: "Car"
+  brand_id: 1
+  owner_id: 1
 vehicles_004:
   id: 4
-  make: "Honda"
   model: "Rebel"
   type: "Motorcycle"
+  brand_id: 2
+  owner_id: 1
