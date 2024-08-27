@@ -52,7 +52,7 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.deletion_list).to eq(
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
-          "User" => [user.id],
+          model_klass.name => [user.id],
           "Vehicle" => expected_owned_vehicle_ids.sort
         }
       )
@@ -96,7 +96,7 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.deletion_list).to eq(
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
-          "User" => [user.id],
+          model_klass.name => [user.id],
           "Vehicle" => expected_owned_vehicle_ids.sort
         }
       )
@@ -149,7 +149,8 @@ RSpec.describe BulkDependencyEraser::Builder do
 
         expect(subject.deletion_list).to eq(
           {
-            "User" => [user.id] + User.where.not(id: user.id).where(last_name: user.last_name).pluck(:id),
+            "User" => ([user.id] + User.where.not(id: user.id).where(last_name: user.last_name).pluck(:id)).sort,
+            'UserWithRestrictWithError' => [user.id],
           }
         )
       end
@@ -218,7 +219,8 @@ RSpec.describe BulkDependencyEraser::Builder do
 
         expect(subject.deletion_list).to eq(
           {
-            "User" => [user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)
+            "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort,
+            "UserWithRestrictWithException" => [user.id] 
           }
         )
       end
@@ -264,7 +266,7 @@ RSpec.describe BulkDependencyEraser::Builder do
 
       expect(subject.deletion_list).to eq(
         {
-          "User" => [user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)
+          model_klass.name => [user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)
         }
       )
     end

@@ -12,6 +12,7 @@ module BulkDependencyEraser
       ignore_tables: [],
       # Won't parse any table in this list
       ignore_tables_and_dependencies: [],
+      ignore_klass_names_and_dependencies: [],
     }.freeze
 
     DEPENDENCY_NULLIFY = %i[
@@ -52,10 +53,12 @@ module BulkDependencyEraser
       @ignore_table_deletion_list = {}
       @ignore_table_nullification_list = {}
 
+      @table_names_to_parsed_klass_names = {}
+
       super(opts:)
 
-      # populate with klass_names for ignorable klasses
-      @ignore_klass_and_dependencies = opts_c.ignore_tables_and_dependencies.collect { |table_name| table_name.classify }
+      @ignore_table_name_and_dependencies = opts_c.ignore_tables_and_dependencies.collect { |table_name| table_name }
+      @ignore_klass_name_and_dependencies = opts_c.ignore_klass_names_and_dependencies.collect { |klass_name| klass_name }
     end
 
     def execute
@@ -63,10 +66,12 @@ module BulkDependencyEraser
       build_result = build
 
       # move any klass names if told to ignore them into their respective new lists
+      # - prior approach was to use table_name.classify, but we can't trust that approach.
       opts_c.ignore_tables.each do |table_name|
-        klass_name = table_name.classify
-        ignore_table_deletion_list[klass_name]      = deletion_list.delete(klass_name)      if deletion_list.key?(klass_name)
-        ignore_table_nullification_list[klass_name] = nullification_list.delete(klass_name) if nullification_list.key?(klass_name)
+        table_names_to_parsed_klass_names.dig(table_name)&.each do |klass_name|
+          ignore_table_deletion_list[klass_name]      = deletion_list.delete(klass_name)      if deletion_list.key?(klass_name)
+          ignore_table_nullification_list[klass_name] = nullification_list.delete(klass_name) if nullification_list.key?(klass_name)
+        end
       end
 
       return build_result
@@ -108,15 +113,24 @@ module BulkDependencyEraser
       if query.is_a?(ActiveRecord::Relation)
         klass      = query.klass
         klass_name = query.klass.name
-        table_klass_name = query.klass.table_name.classify
       else
         # current_query is a normal rails class
         klass      = query
         klass_name = query.name
-        table_klass_name = query.table_name.classify
       end
 
-      if ignore_klass_and_dependencies.include?(table_klass_name)
+      table_names_to_parsed_klass_names[klass.table_name] ||= []
+      # Need to populate this list here, so we can have access to it later for the :ignore_tables option
+      unless table_names_to_parsed_klass_names[klass.table_name].include?(klass_name)
+        table_names_to_parsed_klass_names[klass.table_name] << klass_name
+      end
+
+      if ignore_table_name_and_dependencies.include?(klass.table_name)
+        # Not parsing, table and dependencies ignorable
+        return
+      end
+
+      if ignore_klass_name_and_dependencies.include?(klass_name)
         # Not parsing, table and dependencies ignorable
         return
       end
@@ -141,25 +155,25 @@ module BulkDependencyEraser
         query.pluck(:id)
       end
 
-      deletion_list[table_klass_name] ||= []
+      deletion_list[klass_name] ||= []
 
       # prevent infinite recursion here.
       # - Remove any IDs that have been processed before
-      query_ids = query_ids - deletion_list[table_klass_name]
+      query_ids = query_ids - deletion_list[klass_name]
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
         # quick cleanup, if turns out was an empty class
-        deletion_list.delete(table_klass_name) if deletion_list[table_klass_name].none?
+        deletion_list.delete(klass_name) if deletion_list[klass_name].none?
         return
       end
 
       # Use-case: We have more IDs to process
       # - can now safely add to the list, since we've prevented infinite recursion
-      deletion_list[table_klass_name] += query_ids
+      deletion_list[klass_name] += query_ids
 
       # Hard to test if not sorted
       # - if we had more advanced rspec matches, we could do away with this.
-      deletion_list[table_klass_name].sort! if Rails.env.test?
+      deletion_list[klass_name].sort! if Rails.env.test?
 
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
@@ -209,7 +223,7 @@ module BulkDependencyEraser
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
       assoc_klass = reflection.klass
-      assoc_table_klass_name = assoc_klass.table_name.classify
+      assoc_klass_name = assoc_klass.name
 
       assoc_query = assoc_klass.unscoped
 
@@ -288,10 +302,10 @@ module BulkDependencyEraser
         # No assoc_ids, no need to add it to the nullification list
         return if assoc_ids.none?
 
-        nullification_list[assoc_table_klass_name] ||= {}
-        nullification_list[assoc_table_klass_name][specified_foreign_key] ||= []
-        nullification_list[assoc_table_klass_name][specified_foreign_key] += assoc_ids
-        nullification_list[assoc_table_klass_name][specified_foreign_key].uniq!
+        nullification_list[assoc_klass_name] ||= {}
+        nullification_list[assoc_klass_name][specified_foreign_key] ||= []
+        nullification_list[assoc_klass_name][specified_foreign_key] += assoc_ids
+        nullification_list[assoc_klass_name][specified_foreign_key].uniq!
       else
         raise "invalid parsing type: #{type}"
       end
@@ -300,6 +314,8 @@ module BulkDependencyEraser
     protected
 
     attr_reader :ignore_klass_and_dependencies
+    attr_reader :table_names_to_parsed_klass_names
+    attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
     # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
     def find_root_association_from_through_assocs klass, association_name

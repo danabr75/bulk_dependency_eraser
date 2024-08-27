@@ -40,10 +40,17 @@ RSpec.describe BulkDependencyEraser::Manager do
     let!(:nested_parts_b_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_a_ids).pluck(:id) }
     let!(:nested_parts_c_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_b_ids).pluck(:id) }
     context 'with default options' do
-      let(:expected_deletion_list) do
+      let(:expected_snapshot_list) do
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "UserWithHasManyDependent" => [user.id],
           "Vehicle" => expected_owned_vehicle_ids.sort,
         }
       end
@@ -58,7 +65,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute and mirror the rails destroy" do
@@ -71,7 +78,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
 
 
@@ -97,10 +104,17 @@ RSpec.describe BulkDependencyEraser::Manager do
 
     context 'with verbose: true' do
       let(:params) { super().merge(opts: { verbose: true }) }
-      let(:expected_deletion_list) do
+      let(:expected_snapshot_list) do
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "UserWithHasManyDependent" => [user.id],
           "Vehicle" => expected_owned_vehicle_ids.sort,
         }
       end
@@ -115,7 +129,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute and mirror the rails destroy" do
@@ -128,7 +142,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
 
 
@@ -154,10 +168,16 @@ RSpec.describe BulkDependencyEraser::Manager do
 
     context "with ignore_table: ['Vehicle']" do
       let(:params) { super().merge(opts: {ignore_tables: ['vehicles']}) }
-      let(:expected_deletion_list) do
+      let(:expected_snapshot_list) do
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
+        }
+      end
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "UserWithHasManyDependent" => [user.id],
         }
       end
       let(:expected_ignore_table_deletion_list) do
@@ -174,7 +194,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
 
 
@@ -198,9 +218,14 @@ RSpec.describe BulkDependencyEraser::Manager do
 
     context "with ignore_tables_and_dependencies: ['Vehicle']" do
       let(:params) { super().merge(opts: {ignore_tables_and_dependencies: ['vehicles']}) }
-      let(:expected_deletion_list) do
+      let(:expected_snapshot_list) do
         {
           "User" => [user.id],
+        }
+      end
+      let(:expected_deletion_list) do
+        {
+          "UserWithHasManyDependent" => [user.id],
         }
       end
 
@@ -212,7 +237,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
 
 
@@ -235,12 +260,18 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
 
     context 'with enable_invalid_foreign_key_detection: true' do
-      # TODO: Need to test the Deleter directly, and pass in the classes out of order, to get it to raise an error.
       let(:params) { super().merge(opts: { enable_invalid_foreign_key_detection: true }) }
-      let(:expected_deletion_list) do
+      let(:expected_snapshot_list) do
         {
           "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
           "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "UserWithHasManyDependent" => [user.id],
           "Vehicle" => expected_owned_vehicle_ids.sort,
         }
       end
@@ -254,7 +285,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute and mirror the rails destroy" do
@@ -267,7 +298,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
 
 
@@ -306,6 +337,13 @@ RSpec.describe BulkDependencyEraser::Manager do
     let(:expected_deletion_list) do
       {
         "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+        "UserWithHasManyThroughDependent" => [user.id],
+        "Vehicle" => expected_owned_vehicle_ids.sort,
+      }
+    end
+    let(:expected_snapshot_list) do
+      {
+        "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
         "User" => [user.id],
         "Vehicle" => expected_owned_vehicle_ids.sort,
       }
@@ -321,7 +359,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
       post_action_snapshot = compare_db_snapshot(init_db_snapshot)
       expect(post_action_snapshot[:added]).to eq({})
-      expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+      expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
     end
 
     it "should execute and mirror the rails destroy" do
@@ -334,19 +372,13 @@ RSpec.describe BulkDependencyEraser::Manager do
 
       post_action_snapshot = compare_db_snapshot(init_db_snapshot)
       expect(post_action_snapshot[:added]).to eq({})
-      expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
     end
 
     it "should populate the deletion list" do
       do_request
 
-      expect(subject.deletion_list).to eq(
-        {
-          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
-          "User" => [user.id],
-          "Vehicle" => (expected_owned_vehicle_ids).sort
-        }
-      )
+      expect(subject.deletion_list).to eq(expected_deletion_list)
     end
 
     it "should populate the nullification list" do
@@ -383,7 +415,13 @@ RSpec.describe BulkDependencyEraser::Manager do
       let(:user_ids_with_similar_last_names) { model_klass.where(last_name) }
       let!(:expected_deletion_list) do
         {
-          "User" => [user.id] + User.where.not(id: user.id).where(last_name: user.last_name).pluck(:id),
+          "UserWithRestrictWithError" => [user.id],
+          "User" => ([user.id] + User.where.not(id: user.id).where(last_name: user.last_name).pluck(:id)).sort,
+        }
+      end
+      let!(:expected_snapshot_list) do
+        {
+          "User" => ([user.id] + User.where.not(id: user.id).where(last_name: user.last_name).pluck(:id).sort),
         }
       end
       let!(:expected_nullification_list) do
@@ -396,7 +434,7 @@ RSpec.describe BulkDependencyEraser::Manager do
               # Rob Dana, since he is being deleted, will nillify himself, because he's in his own :similarly_named_users list
               #
               # The only user unaffected is Victor Frankenstein, since he shares no names with the others.
-              "first_name" => User.where(first_name: %w[Ben Rob], last_name: %w[Dana Franklin]).order(:created_at).pluck(:id)
+              "first_name" => User.where(first_name: %w[Ben Rob], last_name: %w[Dana Franklin]).pluck(:id).sort
             },
           }
       end
@@ -413,7 +451,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)    
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)    
       end
 
       it "should populate the deletion list" do
@@ -463,8 +501,14 @@ RSpec.describe BulkDependencyEraser::Manager do
 
     context "When 'dependency: :restrict_with_exception' assoc, with forced option" do
       let(:params) { super().merge(opts: {force_destroy_restricted: true}) }
+      let!(:expected_snapshot_list) do
+        {
+          "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort
+        }
+      end
       let!(:expected_deletion_list) do
         {
+          "UserWithRestrictWithException" => [user.id],
           "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort
         }
       end
@@ -495,7 +539,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)   
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)   
       end
 
 

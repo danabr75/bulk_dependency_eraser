@@ -46,9 +46,13 @@ bdem = BulkDependencyEraser::Manager.new(query:, opts:)
 #   - bdem.ignore_table_deletion_list
 opts: { ignore_tables: [<table_name>, ...] }
 
-# Ignore tables and their dependencies deletion/nullification lists (will still go through those tables to locate dependencies)
+# Ignore tables and their dependencies (will NOT go through those tables to locate dependencies)
 # - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists (because they are not parsed)
 opts: { ignore_tables_and_dependencies: [<table_name>, ...] }
+
+# Ignore class names and their dependencies (will NOT go through those tables to locate dependencies)
+# - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists (because they are not parsed)
+opts: { ignore_klass_names_and_dependencies: [<class_name>, ...] }
 
 # Since we're doing mass deletions, sometimes 'ActiveRecord::InvalidForeignKey' errors are raised.
 # - We can't guarantee deletion order, especially if you have self-referential associations or circular-model dependencies.
