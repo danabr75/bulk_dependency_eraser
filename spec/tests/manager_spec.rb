@@ -39,50 +39,256 @@ RSpec.describe BulkDependencyEraser::Manager do
     let!(:nested_parts_a_ids) { Part.where(partable_type: 'Part', partable_id: vehicle_part_ids).pluck(:id) }
     let!(:nested_parts_b_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_a_ids).pluck(:id) }
     let!(:nested_parts_c_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_b_ids).pluck(:id) }
-
-    let(:expected_deletion_list) do
-      {
-        "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
-        "User" => [user.id],
-        "Vehicle" => expected_owned_vehicle_ids.sort,
-      }
-    end
-
-    it 'should have the right association dependency' do
-      expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
-    end
-
-
-    it "should destroy successfully by rails" do
-      query.destroy_all
-
-      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
-      expect(post_action_snapshot[:added]).to eq({})
-      expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
-    end
-
-    it "should execute and mirror the rails destroy" do
-      expect(user.owned_vehicles.count).to eq(4)
-
-      aggregate_failures do
-        expect(do_request).to be_truthy
-        expect(subject.errors).to be_empty
+    context 'with default options' do
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
       end
 
-      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
-      expect(post_action_snapshot[:added]).to eq({})
-      expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
+      end
+
+
+      it "should destroy successfully by rails" do
+        query.destroy_all
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        expect(user.owned_vehicles.count).to eq(4)
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq({})
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
     end
 
+    context 'with verbose: true' do
+      let(:params) { super().merge(opts: { verbose: true }) }
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
 
-    it "should populate the deletion list" do
-      do_request
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
+      end
 
-      expect(subject.deletion_list).to eq(expected_deletion_list)
+
+      it "should destroy successfully by rails" do
+        query.destroy_all
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        expect(user.owned_vehicles.count).to eq(4)
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq({})
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
     end
 
-    it "should populate the nullification list" do
-      expect(subject.nullification_list).to eq({})
+    context "with ignore_table: ['Vehicle']" do
+      let(:params) { super().merge(opts: {ignore_tables: ['vehicles']}) }
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "User" => [user.id],
+        }
+      end
+      let(:expected_ignore_table_deletion_list) do
+        {
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
+
+      it "should execute successfully" do
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        expect(subject.nullification_list).to eq({})
+      end
+
+      it "should populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq(expected_ignore_table_deletion_list)
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
+    context "with ignore_tables_and_dependencies: ['Vehicle']" do
+      let(:params) { super().merge(opts: {ignore_tables_and_dependencies: ['vehicles']}) }
+      let(:expected_deletion_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+
+      it "should execute successfully" do
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        expect(subject.nullification_list).to eq({})
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
+    context 'with enable_invalid_foreign_key_detection: true' do
+      # TODO: Need to test the Deleter directly, and pass in the classes out of order, to get it to raise an error.
+      let(:params) { super().merge(opts: { enable_invalid_foreign_key_detection: true }) }
+      let(:expected_deletion_list) do
+        {
+          "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+          "User" => [user.id],
+          "Vehicle" => expected_owned_vehicle_ids.sort,
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
+      end
+
+      it "should destroy successfully by rails" do
+        query.destroy_all
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        expect(user.owned_vehicles.count).to eq(4)
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq({})
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
     end
   end
 

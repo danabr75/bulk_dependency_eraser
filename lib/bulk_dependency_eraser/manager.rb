@@ -5,6 +5,7 @@ module BulkDependencyEraser
     }.freeze
 
     delegate :nullification_list, :deletion_list, to: :dependency_builder
+    delegate :ignore_table_deletion_list, :ignore_table_nullification_list, to: :dependency_builder
 
     # @param query [ActiveRecord::Base | ActiveRecord::Relation]
     def initialize query:, opts: {}
@@ -62,7 +63,6 @@ module BulkDependencyEraser
       unless nullifier_execution
         puts "Nullifier execution FAILED" if opts_c.verbose
         merge_errors(nullifier.errors, 'Nullifier: ')
-        @errors += nullifier.errors
       else
         puts "Nullifier execution SUCCESSFUL" if opts_c.verbose
       end

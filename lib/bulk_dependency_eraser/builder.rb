@@ -6,7 +6,12 @@ module BulkDependencyEraser
       # Some associations scopes take parameters.
       # - We would have to instantiate if we wanted to apply that scope filter.
       instantiate_if_assoc_scope_with_arity: false,
+      # wraps around the DB reading
       db_read_wrapper: self::DEFAULT_DB_WRAPPER,
+      # Will parse these tables and their dependencies, but will remove the tables from the lists after parsing.
+      ignore_tables: [],
+      # Won't parse any table in this list
+      ignore_tables_and_dependencies: [],
     }.freeze
 
     DEPENDENCY_NULLIFY = %i[
@@ -36,17 +41,40 @@ module BulkDependencyEraser
     ].freeze
 
     attr_reader :deletion_list, :nullification_list
+    attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
 
     def initialize query:, opts: {}
       @query = query
       @deletion_list  = {}
       @nullification_list = {}
+
+      # For any ignored table results, they will be stored here
+      @ignore_table_deletion_list = {}
+      @ignore_table_nullification_list = {}
+
       super(opts:)
+
+      # populate with klass_names for ignorable klasses
+      @ignore_klass_and_dependencies = opts_c.ignore_tables_and_dependencies.collect { |table_name| table_name.classify }
     end
 
     def execute
+      # go through deletion/nullification lists and remove any tables from 'ignore_tables' option
+      build_result = build
+
+      # move any klass names if told to ignore them into their respective new lists
+      opts_c.ignore_tables.each do |table_name|
+        klass_name = table_name.classify
+        ignore_table_deletion_list[klass_name]      = deletion_list.delete(klass_name)      if deletion_list.key?(klass_name)
+        ignore_table_nullification_list[klass_name] = nullification_list.delete(klass_name) if nullification_list.key?(klass_name)
+      end
+
+      return build_result
+    end
+
+    def build
       begin
-        build_result = deletion_query_parser(@query)
+        deletion_query_parser(@query)
 
         uniqify_errors!
 
@@ -86,6 +114,11 @@ module BulkDependencyEraser
         klass      = query
         klass_name = query.name
         table_klass_name = query.table_name.classify
+      end
+
+      if ignore_klass_and_dependencies.include?(table_klass_name)
+        # Not parsing, table and dependencies ignorable
+        return
       end
 
       if opts_c.verbose
@@ -247,7 +280,7 @@ module BulkDependencyEraser
         deletion_query_parser(assoc_query, parent_class)
       elsif type == :nullify
         # No need for recursion here.
-        # - we're not destroying these assocs so we don't need to parse their dependencies.
+        # - we're not destroying these assocs (just nullifying foreign_key columns) so we don't need to parse their dependencies.
         assoc_ids = read_from_db do
           assoc_query.pluck(:id)
         end
@@ -255,7 +288,6 @@ module BulkDependencyEraser
         # No assoc_ids, no need to add it to the nullification list
         return if assoc_ids.none?
 
-        # puts "FOUND IDS: #{assoc_ids.insect}"
         nullification_list[assoc_table_klass_name] ||= {}
         nullification_list[assoc_table_klass_name][specified_foreign_key] ||= []
         nullification_list[assoc_table_klass_name][specified_foreign_key] += assoc_ids
@@ -266,6 +298,8 @@ module BulkDependencyEraser
     end
 
     protected
+
+    attr_reader :ignore_klass_and_dependencies
 
     # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
     def find_root_association_from_through_assocs klass, association_name
