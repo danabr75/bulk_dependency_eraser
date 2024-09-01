@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
   s.name = %q{bulk_dependency_eraser}
-  s.version = "1.0.1"
+  s.version = "1.0.2"
   s.date = %q{2024-08-24}
   s.authors = ["benjamin.dana.software.dev@gmail.com"]
   s.summary = %q{A bulk deletion tool that deletes records and their dependencies without instantiation}
@@ -17,6 +17,7 @@ Gem::Specification.new do |s|
   ]
   s.require_paths = ["lib"]
   s.homepage = 'https://github.com/danabr75/bulk_dependency_eraser'
+  s.metadata = { "source_code_uri" => "https://github.com/danabr75/bulk_dependency_eraser" }
   s.add_runtime_dependency 'rails', '>= 6.1'
   s.add_development_dependency 'rails', ['~> 6.1']
   s.add_development_dependency "rspec", ["~> 3.9"]
