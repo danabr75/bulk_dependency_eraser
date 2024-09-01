@@ -31,8 +31,9 @@ gem 'bulk_dependency_eraser'
 
 # Data structure requirements
 - Requires all query and dependency tables to have an 'id' column.
-- Requires that all query and dependency associations not have scopes with parameters (we would need to instantiate to resolve)
-  - There is a option that we're working on that would attempt to instantiate records so that we could resolve those scopes.
+- This logic also requires that all the rails model association scopes not have parameters
+  - We would need to instantiate the records to resolve those.
+  - If you have to have association scopes with instance-level parameters, see the :instantiate_if_assoc_scope_with_arity option documentation.
 - If any of these requirements are not met, an error will be reported and the deletion/nullification will not take effect.
 
 # Options
@@ -95,4 +96,18 @@ opts: { db_delete_wrapper: DATABASE_WRITE_WRAPPER }
 opts: { db_nullify_wrapper: DATABASE_WRITE_WRAPPER }
 ```
 
+# Additional Options - Instantiation
+```
+# Sometimes it can't be avoided, and you have an association with instance-level parameters in it's scope.
+# You can utilize the :instantiate_if_assoc_scope_with_arity option to have this gem instantiate those parent records to
+# resolve and pluck the IDs of those associations
+
+opts: { instantiate_if_assoc_scope_with_arity: true }
+
+# You can also set the batching, default 500, for those record instantiations
+opts: {
+  instantiate_if_assoc_scope_with_arity: true,
+  instantation_batching_size_limit: 500
+}
+```
 

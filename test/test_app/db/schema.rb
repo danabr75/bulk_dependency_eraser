@@ -44,4 +44,9 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.string "brand_name"
     t.bigint "brand_id"
   end
+
+  create_table "addresses", id: :serial, force: :cascade do |t|
+    t.string "street"
+    t.bigint "user_id"
+  end
 end
