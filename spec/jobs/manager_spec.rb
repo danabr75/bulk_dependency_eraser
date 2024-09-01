@@ -136,7 +136,10 @@ RSpec.describe BulkDependencyEraser::Manager do
         expect(user.owned_vehicles.count).to eq(4)
 
         aggregate_failures do
-          expect(do_request).to be_truthy
+          # Suppress versbose output
+          suppress_stdout do
+            expect(do_request).to be_truthy
+          end
           expect(subject.errors).to be_empty
         end
 
@@ -147,19 +150,25 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
       it "should populate the deletion list" do
-        do_request
+        suppress_stdout do
+          do_request
+        end
 
         expect(subject.deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        suppress_stdout do
+          do_request
+        end
 
         expect(subject.nullification_list).to eq({})
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        suppress_stdout do
+          do_request
+        end
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})

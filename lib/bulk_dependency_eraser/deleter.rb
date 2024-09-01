@@ -7,6 +7,12 @@ module BulkDependencyEraser
       enable_invalid_foreign_key_detection: false
     }.freeze
 
+    DEFAULT_DB_WRAPPER = ->(block) do
+      ActiveRecord::Base.connected_to(role: :writing) do
+        block.call
+      end
+    end
+
     def initialize class_names_and_ids: {}, opts: {}
       @class_names_and_ids = class_names_and_ids
       super(opts:)

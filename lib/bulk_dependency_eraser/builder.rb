@@ -15,6 +15,12 @@ module BulkDependencyEraser
       ignore_klass_names_and_dependencies: [],
     }.freeze
 
+    DEFAULT_DB_WRAPPER = ->(block) do
+      ActiveRecord::Base.connected_to(role: :reading) do
+        block.call
+      end
+    end
+
     DEPENDENCY_NULLIFY = %i[
       nullify
     ].freeze

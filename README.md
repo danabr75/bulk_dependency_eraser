@@ -67,6 +67,32 @@ opts: { enable_invalid_foreign_key_detection: true }
 opts: { force_destroy_restricted: true }
 ```
 
+# Additional Options - Database Wrappers
+```
+You can wrap your database calls using the following options.
 
+# You can pass your own procs if you wish to use different database call wrappers.
+# By default, the database reading will be done through the :reading role
+DATABASE_READ_WRAPPER = ->(block) do
+  ActiveRecord::Base.connected_to(role: :reading) do
+    block.call
+  end
+end
+
+opts: { db_read_wrapper: DATABASE_READ_WRAPPER }
+
+# By default, the database deletion and nullification will be done the :writing role, though you can override each individually.
+DATABASE_WRITE_WRAPPER = ->(block) do
+  ActiveRecord::Base.connected_to(role: :writing) do
+    block.call
+  end
+end
+
+# Deletion wrapper
+opts: { db_delete_wrapper: DATABASE_WRITE_WRAPPER }
+
+# Column Nullification wrapper
+opts: { db_nullify_wrapper: DATABASE_WRITE_WRAPPER }
+```
 
 

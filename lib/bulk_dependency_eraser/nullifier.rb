@@ -5,6 +5,12 @@ module BulkDependencyEraser
       db_nullify_wrapper: self::DEFAULT_DB_WRAPPER
     }.freeze
 
+    DEFAULT_DB_WRAPPER = ->(block) do
+      ActiveRecord::Base.connected_to(role: :writing) do
+        block.call
+      end
+    end
+
     # @param class_names_columns_and_ids [Hash] - model names with columns to nullify pointing towards the record IDs that require the nullification.
     # - structure:
     #    {

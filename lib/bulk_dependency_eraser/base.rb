@@ -2,6 +2,7 @@ module BulkDependencyEraser
   class Base
     DEFAULT_OPTS = {}.freeze
 
+    # Default Database wrapper, no effect.
     DEFAULT_DB_WRAPPER = ->(block) { block.call }
 
     attr_reader :errors
