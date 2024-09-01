@@ -30,7 +30,9 @@ module BulkDependencyEraser
     end
 
     def report_error msg
-      @errors << msg
+      # remove new lines, surrounding white space, replace with semicolon delimiters
+      n = msg.strip.gsub(/\s*\n\s*/, '; ')
+      @errors << n
     end
 
     def merge_errors errors, prefix = nil
