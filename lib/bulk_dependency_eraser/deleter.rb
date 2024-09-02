@@ -44,8 +44,8 @@ module BulkDependencyEraser
               end
             end
           end
-        rescue Exception => e
-          report_error("Issue attempting to delete '#{current_class_name}': #{e.name} - #{e.message}")
+        rescue StandardError => e
+          report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
           raise ActiveRecord::Rollback
         end
       end
@@ -56,7 +56,7 @@ module BulkDependencyEraser
     protected
 
     def delete_by_klass_and_ids klass, ids
-      puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
+      puts "Deleting #{klass.name}'s IDs: #{ids}" #if opts_c.verbose
       delete_in_db do
         klass.unscoped.where(id: ids).delete_all
       end

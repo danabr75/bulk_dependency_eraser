@@ -13,4 +13,6 @@ group :development, :test do
   gem 'sqlite3', '~> 1.4'
   # temp here, until in-memory tests work
   # gem 'pg', '0.18.2'
+  gem 'factory_bot'
+  gem 'faker'
 end

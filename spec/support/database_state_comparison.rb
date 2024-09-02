@@ -6,7 +6,7 @@ def get_db_snapshot
     
     if klass.primary_key == 'id'
       ids = ActiveRecord::Base.connection.select_values("SELECT id FROM #{table_name}")
-      klasses_and_ids[klass.name] = ids.sort
+      klasses_and_ids[klass.name] = ids.sort if ids.any?
     else
       # Handle tables without an id column
       id_columns = columns.select { |col| col.ends_with?('_id') }
@@ -27,12 +27,12 @@ def compare_db_snapshot original_klasses_and_ids
   added   = {}
 
   original_klasses_and_ids.each do |klass_name, ids|
-    deleted[klass_name] = ids - current_klasses_and_ids[klass_name]
+    deleted[klass_name] = ids - (current_klasses_and_ids[klass_name] || [])
     deleted.delete(klass_name) if deleted[klass_name].none?
   end
 
   current_klasses_and_ids.each do |klass_name, ids|
-    added[klass_name] = ids - original_klasses_and_ids[klass_name]
+    added[klass_name] = ids - (original_klasses_and_ids[klass_name] || [])
     added.delete(klass_name) if added[klass_name].none?
   end
 

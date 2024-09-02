@@ -31,7 +31,7 @@ module BulkDependencyEraser
 
     def report_error msg
       # remove new lines, surrounding white space, replace with semicolon delimiters
-      n = msg.strip.gsub(/\s*\n\s*/, '; ')
+      n = msg.strip.gsub(/\s*\n\s*/, ' ')
       @errors << n
     end
 

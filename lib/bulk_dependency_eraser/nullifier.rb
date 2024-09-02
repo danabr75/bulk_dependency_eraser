@@ -47,8 +47,8 @@ module BulkDependencyEraser
               end
             end
           end
-        rescue Exception => e
-          report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.name} - #{e.message}")
+        rescue StandardError => e
+          report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
           raise ActiveRecord::Rollback
         end
       end

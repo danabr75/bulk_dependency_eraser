@@ -1,13 +1,25 @@
 ---
 users_vehicles_001:
+  id: 1
   user_id: 1
   vehicle_id: 1
 users_vehicles_002:
+  id: 2
   user_id: 2
   vehicle_id: 1
 users_vehicles_003:
+  id: 3
   user_id: 1
   vehicle_id: 2
 users_vehicles_004:
+  id: 4
   user_id: 2
   vehicle_id: 2
+users_vehicles_005:
+  id: 5
+  user_id: 5
+  vehicle_id: 7
+users_vehicles_006:
+  id: 6
+  user_id: 6
+  vehicle_id: 7

@@ -11,6 +11,14 @@ Dir[
   )
 ].each { |f| require f }
 
+# require factories
+Dir[
+  File.join(
+    File.dirname(File.expand_path(__FILE__)),
+    'factories/**/*.rb'
+  )
+].each { |file| require file }
+
 EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD = %w[
   schema_info
   sessions
@@ -21,6 +29,12 @@ EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD = %w[
   version_associations
 ]
 ALL_DATABASE_TABLES = -> do
+  ActiveRecord::Base.connection.tables.reject do |table|
+    EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD.include?(table)
+  end
+end
+
+ALL_FIXTURE_TABLES = -> do
   ActiveRecord::Base.connection.tables.reject do |table|
     EXCLUDE_DATABASE_TABLES_FROM_FIXTURE_LOAD.include?(table) || !File.exist?(Rails.root.join("test", "fixtures", "#{table}.yml"))
   end
@@ -40,8 +54,11 @@ end
 # Rake::Task['db:fixtures:load'].invoke
 
 RSpec.configure do |config|
+  config.include FactoryBot::Syntax::Methods
+
   DatabaseCleaner.strategy = :transaction
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
+  # This doesn't play well with missing fixture files!
   config.fixture_path = File.expand_path('../../test/test_app/test/fixtures', __FILE__)
 
   config.before(:each) do

@@ -15,11 +15,23 @@ users_003:
   id: 3
   email: "test3@test.test"
   first_name: "Rob"
-  last_name: "Dana"
+  last_name: "Thomas"
   active: true
 users_004:
   id: 4
   email: "test4@test.test"
-  first_name: "Ben"
+  first_name: "Benjamin"
   last_name: "Franklin"
+  active: true
+users_005:
+  id: 5
+  email: "test5@test.test"
+  first_name: "Ghengis"
+  last_name: "Khan"
+  active: true
+users_006:
+  id: 6
+  email: "test6@test.test"
+  first_name: "Julius"
+  last_name: "Caesar"
   active: true

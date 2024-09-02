@@ -1,7 +1,7 @@
 class Vehicle < ApplicationRecord
   has_many :parts, as: :partable, dependent: :destroy
 
-  has_many :users_vehicles
+  has_many :users_vehicles, dependent: :destroy
   has_many :users, through: :users_vehicles
 
   belongs_to :brand

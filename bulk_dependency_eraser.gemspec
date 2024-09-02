@@ -25,5 +25,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency "rspec-rails", ["~> 4.0"]
   s.add_development_dependency "database_cleaner", ["~> 1.8"]
   s.add_development_dependency "sqlite3", ["~> 1.4"]
+  s.add_development_dependency "factory_bot", ["~> 6.4"]
+  s.add_development_dependency "faker", ["~> 3.4"]
   s.required_ruby_version = '>= 3.1'
 end

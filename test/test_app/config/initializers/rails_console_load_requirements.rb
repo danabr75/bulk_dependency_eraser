@@ -10,5 +10,13 @@ if Rails.const_defined? 'Console'
     Rake::Task['db:fixtures:load'].reenable
     Rake::Task['db:fixtures:load'].invoke
     puts "FOUND TABLES: #{ActiveRecord::Base.connection.tables.join(', ')}"
+
+    # require factories
+    Dir[
+      File.join(
+        File.dirname(File.expand_path(__FILE__)),
+        '../../../../spec/factories/**/*.rb'
+      )
+    ].each { |file| require file }
   end
 end

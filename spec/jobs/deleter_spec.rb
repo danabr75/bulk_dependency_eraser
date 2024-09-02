@@ -1,7 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe BulkDependencyEraser::Deleter do
-  fixtures(ALL_DATABASE_TABLES.call)
+  fixtures(ALL_FIXTURE_TABLES.call)
+
   let(:model_klass) { User }
   let(:input_deletion_list) { {} }
   let(:query) { model_klass.where(email: 'test@test.test') }
