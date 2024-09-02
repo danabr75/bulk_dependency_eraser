@@ -1,7 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe BulkDependencyEraser::Builder do
-  fixtures(ALL_DATABASE_TABLES.call)
+  fixtures(ALL_FIXTURE_TABLES.call)
+
   let(:model_klass) { User }
   let(:query) { model_klass }
   let(:params) { { query: model_klass } }
@@ -27,7 +28,7 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.deletion_list).not_to be_empty
       expect(subject.errors).to be_empty
 
-      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(6).times
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(26).times
     end
   end
 end

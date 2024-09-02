@@ -22,7 +22,6 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
   end
 
-
   context 'has_many' do
     let(:model_klass) { User }
     let(:query) { model_klass.where(email: 'test@test.test') }
@@ -342,6 +341,132 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
     end
 
+    context "dependency: :destroy (polymorphic)" do
+      let!(:registration_list) { create_list(:registration, 5, registerable: user)} 
+      let!(:registration_ids) { registration_list.map(&:id).sort } 
+      let!(:expected_snapshot_list) do
+        snapshot = super()
+        snapshot = snapshot.to_a.insert(0, ['Registration', registration_ids]).to_h
+        snapshot
+      end
+      let!(:expected_deletion_list) do
+        snapshot = super()
+        snapshot = snapshot.to_a.insert(0, ['Registration', registration_ids]).to_h
+        snapshot
+      end
+
+      it 'should have the right association dependencies' do
+        expect(model_klass.reflect_on_association(:registrations).options[:dependent]).to eq(:destroy)
+        expect(model_klass.reflect_on_association(:registrations).options[:as]).to eq(:registerable)
+      end
+
+      # Rails bug!
+      it "should destroy successfully by rails (failure!, rails can't handle circular dependencies with polymorphism!)" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq({})
+      end
+
+      it "should execute and mirror the rails destroy (were it successful)" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
+    context "dependency: :nullify (polymorphic)" do
+      let!(:nullify_registration_list) { create_list(:nullify_registration, 5, registerable: user)} 
+      let!(:nullify_registration_ids) { nullify_registration_list.map(&:id).sort } 
+      let!(:expected_nullification_list) do
+        {
+          'NullifyRegistration' => {
+            'registerable_id' => nullify_registration_ids,
+            'registerable_type' => nullify_registration_ids,
+          }
+        }
+      end
+
+      it 'should have the right association dependencies' do
+        expect(model_klass.reflect_on_association(:nullify_registrations).options[:dependent]).to eq(:nullify)
+        expect(model_klass.reflect_on_association(:nullify_registrations).options[:as]).to eq(:registerable)
+      end
+
+      # Rails bug!
+      it "should destroy successfully by rails (failure!, rails can't handle circular dependencies with polymorphism!)" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy (were it successful)" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
     context 'dependency: :restrict_with_error' do
       let!(:message) { create(:message, user:) }
 
@@ -655,8 +780,6 @@ RSpec.describe BulkDependencyEraser::Manager do
         expect(subject.nullification_list).to eq(expected_nullification_list)
       end
     end
-
-    # TODO: NO has_many polymorphic assoc!!!
   end
 
   context 'belongs_to' do

@@ -56,7 +56,7 @@ module BulkDependencyEraser
     protected
 
     def delete_by_klass_and_ids klass, ids
-      puts "Deleting #{klass.name}'s IDs: #{ids}" #if opts_c.verbose
+      puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
       delete_in_db do
         klass.unscoped.where(id: ids).delete_all
       end

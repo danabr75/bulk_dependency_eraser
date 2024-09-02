@@ -31,6 +31,10 @@ class User < ApplicationRecord
 
   has_one :nullify_poly_profile, inverse_of: :profilable, as: :profilable, dependent: :nullify
 
+  # has_many polymorphic use-case
+  has_many :registrations, inverse_of: :registerable, as: :registerable, dependent: :destroy
+  has_many :nullify_registrations, inverse_of: :registerable, as: :registerable, dependent: :nullify
+
   # Restrict cases
   has_many :messages, dependent: :restrict_with_error
   has_many :texts,    dependent: :restrict_with_exception

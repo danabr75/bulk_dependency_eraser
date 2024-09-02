@@ -153,7 +153,7 @@ module BulkDependencyEraser
         if association_parent
           puts "Building #{klass_name}"
         else
-          puts "Building #{association_parent} => #{klass_name}"
+          puts "Building #{association_parent}, assocation of #{klass_name}"
         end
       end
 
@@ -209,6 +209,12 @@ module BulkDependencyEraser
       nullify_association_names    = nullify_associations.map(&:name)
       restricted_association_names = restricted_associations.map(&:name)
 
+      if opts_c.verbose
+        puts "Destroyable Associations: #{destroy_association_names}"
+        puts "Nullifiable Associations: #{nullify_association_names}"
+        puts " Restricted Associations: #{restricted_association_names}"
+      end
+
       # Iterate through the assoc names, if there are any :through assocs, then remap 
       destroy_association_names = destroy_association_names.collect do |assoc_name|
         find_root_association_from_through_assocs(klass, assoc_name)
@@ -225,8 +231,6 @@ module BulkDependencyEraser
         association_parser(klass, query, query_ids, nullify_association_name, :nullify)
       end
 
-      puts "restricted_association_names: #{restricted_association_names}"
-
       restricted_association_names.each do |restricted_association_name|
         association_parser(klass, query, query_ids, restricted_association_name, :restricted)
       end
@@ -241,9 +245,6 @@ module BulkDependencyEraser
     def association_parser(parent_class, query, query_ids, association_name, type)
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
-      puts "PARSER - REFLECTION"
-      puts reflection_type.inspect
-      puts reflection.inspect
 
       if self.class::DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES.include?(reflection_type)
         report_error("Dependency detected on #{parent_class.name}'s '#{association_name}' - association doesn't support dependency")
@@ -269,7 +270,6 @@ module BulkDependencyEraser
     # Handles the :has_many association type
     # - handles it's polymorphic associations internally (easier on the has_many)
     def association_parser_has_many(parent_class, query, query_ids, association_name, type, opts = {})
-      puts "association_parser_has_many: #{association_name}   --   #{type}"
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
@@ -309,14 +309,7 @@ module BulkDependencyEraser
 
       # handle foreign_key edge cases
       if specified_foreign_key.nil?
-        if reflection.options[:polymorphic]
-          # Not sure we ever reach this use-case, if we're in a has_many case.
-          # TODO: remove this if never raised
-          raise "should not ever reach this use case: 59104129159"
-          specified_foreign_type = "#{association_name.singularize}_type"
-          specified_foreign_key = "#{association_name.singularize}_id"
-          assoc_query = assoc_query.where({ specified_foreign_type.to_sym => parent_class.name })
-        elsif reflection.options[:as]
+        if reflection.options[:as]
           specified_foreign_type = "#{reflection.options[:as]}_type"
           specified_foreign_key = "#{reflection.options[:as]}_id"
           # Only filtering by type here, the extra work for a poly assoc. We filter by IDs later
@@ -349,15 +342,15 @@ module BulkDependencyEraser
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
       end
 
+      # Apply limit if has_one assocation (subset of has_many)
       if opts[:limit]
         assoc_query = assoc_query.limit(opts[:limit])
       end
-      puts 'hello'
+
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
         deletion_query_parser(assoc_query, parent_class)
       elsif type == :restricted
-        puts "CASE 3"
         if traverse_restricted_dependency?(parent_class, reflection, assoc_query)
           deletion_query_parser(assoc_query, parent_class)
         end
@@ -416,7 +409,6 @@ module BulkDependencyEraser
     end
 
     def association_parser_belongs_to(parent_class, query, query_ids, association_name, type)
-      puts "association_parser_belongs_to -> #{parent_class}'s #{association_name}"
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
@@ -482,7 +474,6 @@ module BulkDependencyEraser
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
         deletion_query_parser(assoc_query, parent_class)
       elsif type == :restricted
-        puts "CASE 0"
         if traverse_restricted_dependency?(parent_class, reflection, assoc_query)
           deletion_query_parser(assoc_query, parent_class)
         end
@@ -552,7 +543,6 @@ module BulkDependencyEraser
           deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
         end
       elsif type == :restricted
-        puts "CASE 1"
         if traverse_restricted_dependency_for_belongs_to_poly?(parent_class, reflection, foreign_ids_by_type)
           # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
           foreign_ids_by_type.each do |type, ids|

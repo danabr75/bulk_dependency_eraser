@@ -16,7 +16,14 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.boolean "active"
     t.bigint "registerable_id"
     t.string "registerable_type"
-    t.index ["registerable_type", "registerable_id"], name: "index_parts_on_registerable_type_and_registerable_id"
+    t.index ["registerable_type", "registerable_id"], name: "index_registrations_on_registerable_type_and_registerable_id"
+  end
+
+  create_table "nullify_registrations", id: :integer, force: :cascade do |t|
+    t.boolean "active"
+    t.bigint "registerable_id"
+    t.string "registerable_type"
+    t.index ["registerable_type", "registerable_id"], name: "index_nulfy_registrations_on_reg_type_and_reg_id"
   end
 
   create_table "messages", id: :integer, force: :cascade do |t|

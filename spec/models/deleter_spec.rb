@@ -3,7 +3,8 @@ require 'rails_helper'
 # Using class name instead of class
 # - if the class is defined before the 'before' block's ActiveRecord::Base stub, it's non-effective for the builder's DEFAULT_DB_WRAPPER proc definition.
 RSpec.describe BulkDependencyEraser::Deleter do
-  fixtures(ALL_DATABASE_TABLES.call)
+  fixtures(ALL_FIXTURE_TABLES.call)
+
   let(:model_klass) { User }
   let(:query) { model_klass.where(email: 'test@test.test') }
   let(:params) { { class_names_and_ids: input_deletion_list } }
