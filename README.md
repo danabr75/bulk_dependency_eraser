@@ -101,7 +101,7 @@ opts: { db_delete_wrapper: DATABASE_WRITE_WRAPPER }
 opts: { db_nullify_wrapper: DATABASE_WRITE_WRAPPER }
 ```
 
-# Additional Options - Instantiation
+# TODO: Additional Options - Instantiation
 ```
 # Sometimes it can't be avoided, and you have an association with instance-level parameters in it's scope.
 # You can utilize the :instantiate_if_assoc_scope_with_arity option to have this gem instantiate those parent records to
