@@ -209,18 +209,23 @@ module BulkDependencyEraser
       nullify_association_names    = nullify_associations.map(&:name)
       restricted_association_names = restricted_associations.map(&:name)
 
-      if opts_c.verbose
-        puts "Destroyable Associations: #{destroy_association_names}"
-        puts "Nullifiable Associations: #{nullify_association_names}"
-        puts " Restricted Associations: #{restricted_association_names}"
-      end
-
-      # Iterate through the assoc names, if there are any :through assocs, then remap 
+      # Iterate through the assoc names, if there are any :through assocs, then rename the association
+      # - Rails interpretation of any dependencies of a :through association is to apply it to
+      #   the leaf association at the end of the :through chain(s)
       destroy_association_names = destroy_association_names.collect do |assoc_name|
         find_root_association_from_through_assocs(klass, assoc_name)
       end
       nullify_association_names = nullify_association_names.collect do |assoc_name|
         find_root_association_from_through_assocs(klass, assoc_name)
+      end
+      restricted_association_names = restricted_association_names.collect do |assoc_name|
+        find_root_association_from_through_assocs(klass, assoc_name)
+      end
+
+      if opts_c.verbose
+        puts "Destroyable Associations: #{destroy_association_names}"
+        puts "Nullifiable Associations: #{nullify_association_names}"
+        puts " Restricted Associations: #{restricted_association_names}"
       end
 
       destroy_association_names.each do |destroy_association_name|

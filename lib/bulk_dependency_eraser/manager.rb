@@ -24,8 +24,7 @@ module BulkDependencyEraser
         return false unless build
       end
 
-      delete!
-      nullify!
+      nullify! && delete!
 
       return errors.none?
     end

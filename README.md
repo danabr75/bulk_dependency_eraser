@@ -2,78 +2,130 @@
 Delete records in bulk, and their dependencies, without instantiation or callbacks.
 
 
-# Install
-gem 'bulk_dependency_eraser'
+# Install (add to Gemfile)
+`gem 'bulk_dependency_eraser'`
 
-# WARNING!
-To accomplish efficient mass deletion, we suppress ActiveRecord::InvalidForeignKey errors!
+# WARNINGS!
+
+### `ActiveRecord::InvalidForeignKey`
+To accomplish efficient mass deletion, we suppress `ActiveRecord::InvalidForeignKey` errors.
 It's upon you to ensure that your dependency trees in your models are set up properly, so as not to leave orphaned records.
-You can disable this suppression, but you may run into deletion order issues. (see :enable_invalid_foreign_key_detection option)
+You can disable this suppression, but you may run into deletion order issues.
+- see `:enable_invalid_foreign_key_detection` option
 
-# Ex usage:
+### Rollbacks
+- We nullify, then delete, in seperate ActiveRecord transactions
+- If there are any errors in nullification, we rollback all nullifications, and do not proceed to deletion.
+- If there are any errors in deletion, we rollback all deletions, but cannot rollback nullifications.
+  - If you've enabled `enable_invalid_foreign_key_detection`, then we will rollback deletions if that error is detected.
+
+# Example 1:
   ```
   # Delete all queried users and their dependencies.
   query = User.where(id: [...])
-  bdem = BulkDependencyEraser::Manager.new(query:)
-  bdem.execute #=> true/false, depending on if successful.
+  manager = BulkDependencyEraser::Manager.new(query:)
+  manager.execute #=> true/false, depending on if successful.
   ```
+
+# Example 2:
   ```
   # To see the dependency tree actualized as ids mapped by class name
   query = User.where(id: [...])
-  bdem = BulkDependencyEraser::Manager.new(query:)
-  bdem.build #=> true/false, depending on if successful.
+  manager = BulkDependencyEraser::Manager.new(query:)
+  manager.build #=> true/false, depending on if successful.
 
   # To see the Class/ID deletion data
-  puts bdem.deletion_list
+  puts manager.deletion_list
 
-  # To see the Class/Column/ID data, where it would nullify those columns for those class on those IDs.
-  puts bdem.nullification_list
+  # To see the Class/Column/ID data
+  # - It would nullify those columns for those class on those IDs.
+  puts manager.nullification_list
 
   # If there are any errors encountered, the deletion/nullification will not take place.
   # You can see any errors here:
-  puts bdem.errors
+  puts manager.errors
   ```
 
 # Data structure requirements
 - Requires all query and dependency tables to have an 'id' column.
 - This logic also requires that all the rails model association scopes not have parameters
   - We would need to instantiate the records to resolve those.
-  - If you have to have association scopes with instance-level parameters, see the :instantiate_if_assoc_scope_with_arity option documentation.
+  - If you have to have association scopes with instance-level parameters, see the `:instantiate_if_assoc_scope_with_arity` option documentation.
 - If any of these requirements are not met, an error will be reported and the deletion/nullification will not take effect.
 
-# Options
+# Options - Passing Them In
 ```
 # pass options as :opts keyword arg
-bdem = BulkDependencyEraser::Manager.new(query:, opts:)
+# - also valid for any other BulkDependencyEraser classes
+opts = {<...>}
+manager = BulkDependencyEraser::Manager.new(query:, opts:)
+```
 
-# Ignore tables (will still go through those tables to locate dependencies)
-# - those ignored table build results will be accessible via the following. Useful for handling those deletions with your own logic.
-#   - bdem.ignore_table_nullification_list
-#   - bdem.ignore_table_deletion_list
-opts: { ignore_tables: [<table_name>, ...] }
+# Additional Options:
 
-# Ignore tables and their dependencies (will NOT go through those tables to locate dependencies)
-# - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists (because they are not parsed)
+### Option: Ignore Tables
+```
+# Ignore tables
+# - will still go through those tables to locate dependencies
+opts: { ignore_tables: [User.table_name, <other_table_name>, ...] }
+# - Those ignored table build results will be accessible via the following.
+#   - Useful for handling those deletions with your own logic.
+manager.ignore_table_deletion_list
+manager.ignore_table_nullification_list
+
+# You can delete/nullify these ignored tables manually:
+deleter = BulkDependencyEraser::Deleter.new(
+  class_names_and_ids: manager.ignore_table_deletion_list,
+  opts:
+)
+deleter.execute
+nullifier = BulkDependencyEraser::Nullifier.new(
+  class_names_columns_and_ids: manager.ignore_table_nullification_list,
+  opts:
+)
+nullifier.execute
+```
+
+### Option: Ignore Tables and Their Dependencies
+```
+# Ignore tables and their dependencies
+# - will NOT go through those tables to locate dependencies
+# - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists
+#   - We don't parse them, so they are not added
 opts: { ignore_tables_and_dependencies: [<table_name>, ...] }
+```
 
-# Ignore class names and their dependencies (will NOT go through those tables to locate dependencies)
-# - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists (because they are not parsed)
+### Option: Ignore Classes and Their Dependencies
+```
+# Ignore class names and their dependencies
+# - will NOT go through those tables to locate dependencies
+# - this option will not populate the 'ignore_table_nullification_list', 'ignore_table_deletion_list' lists
+#   - We don't parse them, so they are not added
 opts: { ignore_klass_names_and_dependencies: [<class_name>, ...] }
+```
 
-# Since we're doing mass deletions, sometimes 'ActiveRecord::InvalidForeignKey' errors are raised.
-# - We can't guarantee deletion order, especially if you have self-referential associations or circular-model dependencies.
-# We use 'ActiveRecord::Base.connection.disable_referential_integrity' blocks to avoid that, but
-# you can disable this by passing this value in options.
-# If this error, or any other error, occurs during deletions, all deletions will be rolled back.
+### Option: Enable 'ActiveRecord::InvalidForeignKey' errors
+```
+# During mass, unordered deletions, sometimes 'ActiveRecord::InvalidForeignKey' errors would be raised.
+# - We can't guarantee deletion order. 
+# - Currently we delete in order of leaf to root klasses (Last In, First Out)
+# - Ordering with self-referential associations or circular-model dependencies is problematic
+#   - only in terms of ordering though. We can easily parse circular or self-referential dependencies
+#
+# Therefore we use 'ActiveRecord::Base.connection.disable_referential_integrity' for deletions
+# However, you can disable this by passing this value in options:
 opts: { enable_invalid_foreign_key_detection: true }
+```
 
+### Option: Destroy 'restrict_with_error' or 'restrict_with_exeception' dependencies
+```
 # To delete associations with dependency values 'restrict_with_error' or 'restrict_with_exception',
 # use the following option:
 # - otherwise an error will be reported and deletions/nullifications will not occur
 opts: { force_destroy_restricted: true }
 ```
 
-# Additional Options - Database Wrappers
+### Option: Database Wrappers
 ```
 You can wrap your database calls using the following options.
 
@@ -87,7 +139,8 @@ end
 
 opts: { db_read_wrapper: DATABASE_READ_WRAPPER }
 
-# By default, the database deletion and nullification will be done the :writing role, though you can override each individually.
+# By default, the database deletion and nullification will be done the :writing role
+# You can override each wrapper individually.
 DATABASE_WRITE_WRAPPER = ->(block) do
   ActiveRecord::Base.connected_to(role: :writing) do
     block.call
@@ -101,12 +154,13 @@ opts: { db_delete_wrapper: DATABASE_WRITE_WRAPPER }
 opts: { db_nullify_wrapper: DATABASE_WRITE_WRAPPER }
 ```
 
-# TODO: Additional Options - Instantiation
+### TODO: Option: Instantiation
+- Feature currently is in development
 ```
-# Sometimes it can't be avoided, and you have an association with instance-level parameters in it's scope.
-# You can utilize the :instantiate_if_assoc_scope_with_arity option to have this gem instantiate those parent records to
-# resolve and pluck the IDs of those associations
-
+# You have an association with instance-level parameters in it's association scope.
+# - You can utilize the :instantiate_if_assoc_scope_with_arity option to have this gem 
+#   instantiate those parent records to resolve and pluck the IDs of those associations
+# - It will not have the same dependency tree parsing speed that you've come to know and love
 opts: { instantiate_if_assoc_scope_with_arity: true }
 
 # You can also set the batching, default 500, for those record instantiations
@@ -115,4 +169,3 @@ opts: {
   batching_size_limit: 500
 }
 ```
-
