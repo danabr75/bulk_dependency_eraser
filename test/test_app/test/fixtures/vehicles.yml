@@ -23,3 +23,15 @@ vehicles_004:
   type: "Motorcycle"
   brand_id: 2
   owner_id: 1
+vehicles_005:
+  id: 5
+  model: "Civic"
+  type: "VehicleWithNoDependents"
+  brand_id: 2
+  owner_id:
+vehicles_006:
+  id: 6
+  model: "CRV"
+  type: "VehicleAlsoWithNoDependents"
+  brand_id: 2
+  owner_id:

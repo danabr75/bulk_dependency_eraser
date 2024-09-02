@@ -44,4 +44,13 @@ parts_009:
   partable_id: 4
   partable_type: Vehicle
   name: "Engine"
-
+parts_010:
+  id: 10
+  partable_id: 5
+  partable_type: VehicleWithNoDependents
+  name: "Custom Engine"
+parts_011:
+  id: 11
+  partable_id: 6
+  partable_type: VehicleAlsoWithNoDependents
+  name: "Custom Frame"

@@ -13,7 +13,7 @@ module BulkDependencyEraser
       # Won't parse any table in this list
       ignore_tables_and_dependencies: [],
       ignore_klass_names_and_dependencies: [],
-      instantation_batching_size_limit: 500,
+      batching_size_limit: 500,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -245,9 +245,14 @@ module BulkDependencyEraser
       when 'ActiveRecord::Reflection::HasManyReflection'
         association_parser_has_many(parent_class, query, query_ids, association_name, type)
       when 'ActiveRecord::Reflection::BelongsToReflection'
-        association_parser_belongs_to(parent_class, query, query_ids, association_name, type)
+        if type == :nullify
+          report_error("#{parent_class.name}'s association '#{association_name}' - dependent 'nullify' invalid for 'belongs_to'")
+        else
+          association_parser_belongs_to(parent_class, query, query_ids, association_name, type)
+        end
       when 'ActiveRecord::Reflection::HasOneReflection'
         # COULD IT WORK THE SAME AS BELOGNS_TO?
+        # TODO:
         association_parser_belongs_to(parent_class, query, query_ids, association_name, type)
       else
         report_message("Unsupported association type for #{parent_class.name}'s association '#{association_name}': #{reflection_type}")
@@ -366,7 +371,7 @@ module BulkDependencyEraser
       # assoc_query = assoc_klass.unscoped
       # query.in_batches
 
-      User.in_batches(of: opts_c.instantation_batching_size_limit) do |batch|
+      User.in_batches(of: opts_c.batching_size_limit) do |batch|
         batch.each do |record|
           record.send(association_name)
         end
@@ -377,10 +382,6 @@ module BulkDependencyEraser
       puts "association_parser_belongs_to -> #{parent_class}'s #{association_name}"
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
-
-      if type == :nullify
-        report_error("#{parent_class.name}'s association '#{association_name}' - dependent 'nullify' invalid for 'belongs_to'")
-      end
 
       # Can't run certain checks on a polymorphic association, no definitive klass to use.
       # - Usually, the polymorphic class is the leaf in a dependency tree.
@@ -404,15 +405,16 @@ module BulkDependencyEraser
       # If there is an association scope present, check to see how many parameters it's using
       # - if there's any parameter, we have to either skip it or instantiate it to find it's dependencies.
       if reflection.scope&.arity&.nonzero?
-        if opts_c.instantiate_if_assoc_scope_with_arity
-          association_parser_belongs_to_instantiation(parent_class, query, query_ids, association_name, type)
-          return
-        else
-          report_error(
-            "#{parent_class.name} and '#{association_name}' - scope has instance parameters. Use :instantiate_if_assoc_scope_with_arity option?"
-          )
-          return
-        end
+        # PENDING:
+        # if opts_c.instantiate_if_assoc_scope_with_arity
+        #   association_parser_belongs_to_instantiation(parent_class, query, query_ids, association_name, type)
+        #   return
+        # else
+        #   report_error(
+        #     "#{parent_class.name} and '#{association_name}' - scope has instance parameters. Use :instantiate_if_assoc_scope_with_arity option?"
+        #   )
+        #   return
+        # end
       elsif reflection.scope
         # I saw this used somewhere, too bad I didn't save the source for it.
         assoc_scope = parent_class.reflect_on_association(association_name).scope
@@ -447,13 +449,69 @@ module BulkDependencyEraser
       end
     end
 
+    # So you've decided to attempt instantiation...
+    # This will be a lot slower than the rest of our logic here, but if needs must.
+    #
+    # This method will replicate association_parser, but instantiate and iterate in batches
     def association_parser_belongs_to_instantiation(parent_class, query, query_ids, association_name, type)
+      # pending
     end
 
     # In this case, it's like a `belongs_to :polymorphicable, polymorphic: true, dependent: :destroy` use-case
     # - it's unusual, but valid use-case
     def association_parser_belongs_to_polymorphic(parent_class, query, query_ids, association_name, type)
-      raise 'todo: association_parser_belongs_to_polymorphic'
+      reflection = parent_class.reflect_on_association(association_name)
+      reflection_type = reflection.class.name
+
+      # If there is an association scope present, check to see how many parameters it's using
+      # - if there's any parameter, we have to either skip it or instantiate it to find it's dependencies.
+      if reflection.scope&.arity&.nonzero?
+        raise 'PENDING'
+      elsif reflection.scope
+        # I saw this used somewhere, too bad I didn't save the source for it.
+        assoc_scope = parent_class.reflect_on_association(association_name).scope
+        assoc_query = assoc_query.instance_exec(&assoc_scope)
+      end
+
+      specified_primary_key = reflection.options[:primary_key] || 'id'
+      specified_foreign_key = reflection.options[:foreign_key] || "#{association_name}_id"
+      specified_foreign_type = specified_foreign_key.sub(/_id$/, '_type')
+
+      # Check to see if foreign_key exists in our parent table
+      unless parent_class.column_names.include?(specified_foreign_key)
+        report_error(
+          "
+          For #{parent_class.name}'s association '#{association_name}': Could not determine the class's foreign key.
+          Foreign key should have been '#{specified_foreign_key}', but did not exist on the #{parent_class.table_name} table.
+          "
+        )
+        return
+      end
+      unless parent_class.column_names.include?(specified_foreign_type)
+        report_error(
+          "
+          For #{parent_class.name}'s association '#{association_name}': Could not determine the class's polymorphic type.
+          Foreign key should have been '#{specified_foreign_type}', but did not exist on the #{parent_class.table_name} table.
+          "
+        )
+        return
+      end
+
+      foreign_ids_by_type = read_from_db do
+        query.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
+          hash.key?(type) ? hash[type] << id : hash[type] = [id]
+        end
+      end
+
+      if type == :delete
+        # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
+        foreign_ids_by_type.each do |type, ids|
+          assoc_klass = type.constantize
+          deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
+        end
+      else
+        raise "invalid parsing type: #{type}"
+      end
     end
 
     protected

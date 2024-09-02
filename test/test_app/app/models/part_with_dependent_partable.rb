@@ -1,4 +1,6 @@
-class PartWithDependentPartable < Part
-  # can belong to car, or as a sub-part of a part.
-  belongs_to :partable, polymorphic: true, dependent: :destroy
+class PartWithDependentPartable < ApplicationRecord
+  self.table_name = 'parts'
+
+  # No need to test the dependency tree traversion, tested elsewhere. No need to have vehicle have dependents
+  belongs_to :partable, polymorphic: true, dependent: :destroy, class_name: 'VehicleWithNoDependents'
 end

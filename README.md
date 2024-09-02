@@ -107,7 +107,7 @@ opts: { instantiate_if_assoc_scope_with_arity: true }
 # You can also set the batching, default 500, for those record instantiations
 opts: {
   instantiate_if_assoc_scope_with_arity: true,
-  instantation_batching_size_limit: 500
+  batching_size_limit: 500
 }
 ```
 
