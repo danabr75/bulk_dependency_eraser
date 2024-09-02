@@ -855,6 +855,9 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
     end
 
+    # Invalid structure use-case
+    # context 'dependency: :nullify'
+
     context "dependency: :destroy (polymorphic)" do
       let(:model_klass) { Registration }
       let!(:user)    { create(:user) }

@@ -389,6 +389,7 @@ module BulkDependencyEraser
     #
     # This method will replicate association_parser, but instantiate and iterate in batches
     def association_parser_has_many_instantiation(parent_class, query, query_ids, association_name, type, opts)
+      raise "Invalid State! Not ready to instantiate!"
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
       assoc_klass = reflection.klass
@@ -401,7 +402,7 @@ module BulkDependencyEraser
       # assoc_query = assoc_klass.unscoped
       # query.in_batches
 
-      User.in_batches(of: opts_c.batching_size_limit) do |batch|
+      assoc_klass.in_batches(of: opts_c.batching_size_limit) do |batch|
         batch.each do |record|
           record.send(association_name)
         end
