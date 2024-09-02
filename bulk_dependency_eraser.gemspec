@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
   s.name = %q{bulk_dependency_eraser}
-  s.version = "1.0.3"
+  s.version = "1.0.4"
   s.date = %q{2024-08-24}
   s.authors = ["benjamin.dana.software.dev@gmail.com"]
   s.summary = %q{A bulk deletion tool that deletes records and their dependencies without instantiation}
