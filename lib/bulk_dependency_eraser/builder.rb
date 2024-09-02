@@ -301,17 +301,26 @@ module BulkDependencyEraser
         assoc_query = assoc_query.instance_exec(&assoc_scope)
       end
 
+      # Look for manually specified keys in the assocation first
       specified_primary_key = reflection.options[:primary_key]&.to_s
       specified_foreign_key = reflection.options[:foreign_key]&.to_s
+      # For polymorphic_associations
+      specified_foreign_type = nil
 
       # handle foreign_key edge cases
       if specified_foreign_key.nil?
         if reflection.options[:polymorphic]
-          assoc_query = assoc_query.where({(association_name.singularize + '_type').to_sym => parent_class.name})
-          specified_foreign_key = association_name.singularize + "_id"
+          # Not sure we ever reach this use-case, if we're in a has_many case.
+          # TODO: remove this if never raised
+          raise "should not ever reach this use case: 59104129159"
+          specified_foreign_type = "#{association_name.singularize}_type"
+          specified_foreign_key = "#{association_name.singularize}_id"
+          assoc_query = assoc_query.where({ specified_foreign_type.to_sym => parent_class.name })
         elsif reflection.options[:as]
-          assoc_query = assoc_query.where({(reflection.options[:as].to_s + '_type').to_sym => parent_class.name})
-          specified_foreign_key = reflection.options[:as].to_s + "_id"
+          specified_foreign_type = "#{reflection.options[:as]}_type"
+          specified_foreign_key = "#{reflection.options[:as]}_id"
+          # Only filtering by type here, the extra work for a poly assoc. We filter by IDs later
+          assoc_query = assoc_query.where({ specified_foreign_type.to_sym => parent_class.name })
         else
           specified_foreign_key = parent_class.table_name.singularize + "_id"
         end
@@ -366,6 +375,17 @@ module BulkDependencyEraser
         nullification_list[assoc_klass_name][specified_foreign_key] ||= []
         nullification_list[assoc_klass_name][specified_foreign_key] += assoc_ids
         nullification_list[assoc_klass_name][specified_foreign_key].uniq!
+
+        nullification_list[assoc_klass_name][specified_foreign_key].sort! if Rails.env.test?
+
+        # Also nullify the 'type' field, if the association is polymorphic
+        if specified_foreign_type
+          nullification_list[assoc_klass_name][specified_foreign_type] ||= []
+          nullification_list[assoc_klass_name][specified_foreign_type] += assoc_ids
+          nullification_list[assoc_klass_name][specified_foreign_type].uniq!
+
+          nullification_list[assoc_klass_name][specified_foreign_type].sort! if Rails.env.test?
+        end
       else
         raise "invalid parsing type: #{type}"
       end

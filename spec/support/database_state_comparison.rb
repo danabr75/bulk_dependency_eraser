@@ -1,5 +1,6 @@
 def get_db_snapshot
   klasses_and_ids = {}
+  # Only iterates through classes that have their own tables, no subclasses.
   ALL_DATABASE_TABLES.call.each do |table_name|
     klass = table_name.classify.constantize
     columns = ActiveRecord::Base.connection.columns(table_name).map(&:name)

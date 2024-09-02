@@ -41,7 +41,8 @@ RSpec.describe BulkDependencyEraser::Manager do
     let!(:users_vehicle_ids)  { UsersVehicle.where(user_id: user.id).pluck(:id) }
     let!(:owner_vehicle_ids)  { UsersVehicle.where(vehicle_id: expected_owned_vehicle_ids).pluck(:id) }
 
-    # BASELINE expected snapshots
+    # BASELINE expected snapshot/deletion list, when deleting the 'user'
+    # Snapshot list will NOT have subclasses, only classes that correspond to a table_name
     let!(:expected_snapshot_list) do
       {
         "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
@@ -50,6 +51,7 @@ RSpec.describe BulkDependencyEraser::Manager do
         "Vehicle" => expected_owned_vehicle_ids.sort,
       }
     end
+    # Deletion list will have subclasses
     let!(:expected_deletion_list) do
       {
         # These are here because Car and Motorcyle have their own dependent: :destroy, overlapping the owned_vehicles
@@ -62,6 +64,9 @@ RSpec.describe BulkDependencyEraser::Manager do
         "UsersVehicle" => (users_vehicle_ids + owner_vehicle_ids).uniq.sort,
         "Vehicle" => expected_owned_vehicle_ids.sort,
       }
+    end
+    let!(:expected_nullification_list) do
+      {}
     end
 
     it 'user should be present' do
@@ -86,7 +91,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
     end
 
-    context "dependency: :destroy (nested, through)" do
+    context "dependency: :destroy (nested, through, with foreign_key constraint)" do
       let(:rails_ignore_foreign_key_constraint) { false }
 
       it "should destroy successfully by rails" do
@@ -97,7 +102,6 @@ RSpec.describe BulkDependencyEraser::Manager do
         expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
-      # WORKING!
       context 'with default options' do
         it 'should have the right association dependencies' do
           expect(model_klass.reflect_on_association(:owned_vehicles).options[:dependent]).to eq(:destroy)
@@ -128,7 +132,7 @@ RSpec.describe BulkDependencyEraser::Manager do
         it "should populate the nullification list" do
           do_request
 
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
 
         it "should not populate the ignore_table lists" do
@@ -172,7 +176,7 @@ RSpec.describe BulkDependencyEraser::Manager do
             do_request
           end
 
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
 
         it "should not populate the ignore_table lists" do
@@ -226,7 +230,7 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
 
         it "should populate the nullification list" do
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
 
         it "should populate the ignore_table lists" do
@@ -275,7 +279,7 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
 
         it "should populate the nullification list" do
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
 
         it "should not populate the ignore_table lists" do
@@ -326,7 +330,7 @@ RSpec.describe BulkDependencyEraser::Manager do
         it "should populate the nullification list" do
           do_request
 
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
 
         it "should populate the ignore_table lists" do
@@ -337,8 +341,6 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
       end
     end
-
-    # ALL TESTS ABOVE HERE ARE PASSING!!!
 
     context 'dependency: :restrict_with_error' do
       let!(:message) { create(:message, user:) }
@@ -401,27 +403,29 @@ RSpec.describe BulkDependencyEraser::Manager do
         it "should execute the nullification list" do
           do_request
 
-          expect(subject.nullification_list).to eq({})
+          expect(subject.nullification_list).to eq(expected_nullification_list)
         end
       end
     end
 
-
-    # ALL WORKING ABOVE HERE
     context 'dependency: :restrict_with_exception' do
-      let(:model_klass) { UserWithRestrictWithException }
+      let!(:text) { create(:text, user:) }
 
-      it 'should have the right association dependency' do
-        expect(model_klass.reflect_on_association(:probable_family_members).options[:dependent]).to eq(:restrict_with_exception)
-      end
+      context "When 'dependency: :restrict_with_error' assoc" do
+        it 'should have the right association dependency' do
+          expect(model_klass.reflect_on_association(:texts).options[:dependent]).to eq(:restrict_with_exception)
+        end
 
-      context "When 'dependency: :restrict_with_exception' assoc" do
+        it "should fail rails destroy" do
+          expect{ user.destroy }.to raise_error(ActiveRecord::DeleteRestrictionError)
+        end
+
         it "should report an error" do
           aggregate_failures do
             expect(do_request).to be_falsey
             expect(subject.errors).to eq(
               [
-                "Builder: #{model_klass.name}'s assoc 'probable_family_members' has a 'dependent: :restrict_with_exception' set. " \
+                "Builder: User's assoc 'texts' has a restricted dependency type. " \
                 "If you still wish to destroy, use the 'force_destroy_restricted: true' option"
               ]
             )
@@ -429,99 +433,80 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
       end
 
-      context "When 'dependency: :restrict_with_exception' assoc, with forced option" do
+      context "When 'dependency: :restrict_with_exception' (forced option)" do
+        # Can't mirror the rails deletion here, since rails won't delete it.
         let(:params) { super().merge(opts: {force_destroy_restricted: true}) }
+
         let!(:expected_snapshot_list) do
-          {
-            "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort
-          }
+          snapshot = super()
+          snapshot = snapshot.to_a.insert(0, ['Text', [text.id]]).to_h
+          snapshot
         end
         let!(:expected_deletion_list) do
-          {
-            "UserWithRestrictWithException" => [user.id],
-            "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort
-          }
-        end
-        let!(:expected_nullification_list) do
-          {
-            # 3 Users to nullify: Ben Dana, Rob Dana, Ben Franklin
-            "User" => {
-              # Ben Dana, because he's also :similarly_named_users of himself
-              # Ben Franklin, because he's a :similarly_named_users of Ben Dana
-              # - Ben Franklin will delete Rob Dana, because Rob Dana is a :probable_family_members of Ben Franklin
-              # Rob Dana, since he is being deleted, will nillify himself, because he's in his own :similarly_named_users list
-              #
-              # The only user unaffected is Victor Frankenstein, since he shares no names with the others.
-              "first_name" => User.where(first_name: %w[Ben Rob], last_name: %w[Dana Franklin]).order(:created_at).pluck(:id)
-            }
-          }
+          snapshot = super()
+          snapshot = snapshot.to_a.insert(0, ['Text', [text.id]]).to_h
+          snapshot
         end
 
-        it 'should have the right association dependency' do
-          expect(model_klass.reflect_on_association(:probable_family_members).options[:dependent]).to eq(:restrict_with_exception)
-        end
-
-        it "should not raise an error" do
+        it "should execute successfully" do
+          updated_db_snapshot = get_db_snapshot
           aggregate_failures do
             expect(do_request).to be_truthy
             expect(subject.errors).to eq([])
           end
 
-          post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+          post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
           expect(post_action_snapshot[:added]).to eq({})
-          expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)   
+          expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)    
         end
 
-
-        it "should populate the 'deletion_list'" do
+        it "should populate the deletion list" do
           do_request
 
           expect(subject.deletion_list).to eq(expected_deletion_list)
         end
 
-
-        it "should populate the 'nullification_list'" do
+        it "should execute the nullification list" do
           do_request
 
           expect(subject.nullification_list).to eq(expected_nullification_list)
-          expect(subject.nullification_list.dig("User", "first_name")&.count).to eq(3)
-
-
-          nullified_user_ids = subject.nullification_list.dig("User", "first_name")
-          # some of the nullifieds were deleted
-          nullified_user_ids = nullified_user_ids - subject.deletion_list['User']
-          # Will be at least one that wasn't deleted: Ben Franklin
-          expect(nullified_user_ids.count).to be >= 1
-
-          expect(User.where(id: nullified_user_ids).pluck(:first_name)).to eq([nil])
-          expect(User.where(last_name: 'Franklin').pluck(:first_name)).to eq([nil])
         end
       end
     end
 
-    context "build dependency tree for User (incl. scope without arity)" do
-      let!(:expected_deletion_list) do
-        {
-          "User" => ([user.id] + user.probable_family_members.where.not(id: user.id).pluck(:id)).sort
-        }
+    context "dependency: :nullify (scope without arity, primary_key other than ID)" do
+      let!(:nullify_user_ids) do
+        query = User.where.not(id: user.id).limit(2)
+        # Update those random 2 users
+        query.update_all(last_name: user.first_name)
+        ids = query.pluck(:id)
+        # Confirm we have 2
+        expect(ids).to have_attributes(size: 2)
+        ids
       end
+
       let!(:expected_nullification_list) do
         {
-          # 3 Users to nullify: Ben Dana, Rob Dana, Ben Franklin
           "User" => {
-            # Ben Dana, because he's also :similarly_named_users of himself
-            # Ben Franklin, because he's a :similarly_named_users of Ben Dana
-            # - Ben Franklin will delete Rob Dana, because Rob Dana is a :probable_family_members of Ben Franklin
-            # Rob Dana, since he is being deleted, will nillify himself, because he's in his own :similarly_named_users list
-            #
-            # The only user unaffected is Victor Frankenstein, since he shares no names with the others.
-            "first_name" => User.where(first_name: %w[Ben Rob], last_name: %w[Dana Franklin]).order(:created_at).pluck(:id)
+            "last_name" => nullify_user_ids.sort
           }
         }
       end
 
       it 'should have the right association dependency' do
-        expect(User.reflect_on_association(:users_vehicles).options[:dependent]).to eq(nil)
+        expect(User.reflect_on_association(:people_who_have_my_first_name_as_a_last_name).options[:dependent]).to eq(:nullify)
+        expect(User.where(id: nullify_user_ids).pluck(:last_name)).to eq([user.first_name] * 2)
+        expect(user.people_who_have_my_first_name_as_a_last_name.count).to eq(2)
+      end
+
+      it "should destroy and nullify successfully by rails" do
+        rails_destroy_all
+
+        expect(User.where(id: nullify_user_ids).pluck(:last_name)).to all(be_nil)
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute successfully" do
@@ -530,9 +515,11 @@ RSpec.describe BulkDependencyEraser::Manager do
           expect(subject.errors).to be_empty
         end
 
+        expect(User.where(id: nullify_user_ids).pluck(:last_name)).to all(be_nil)
+
         post_action_snapshot = compare_db_snapshot(init_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
-        expect(post_action_snapshot[:deleted]).to eq(expected_deletion_list)  
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)  
       end
 
       it "should populate the 'deletion_list'" do
@@ -545,32 +532,157 @@ RSpec.describe BulkDependencyEraser::Manager do
         do_request
 
         expect(subject.nullification_list).to eq(expected_nullification_list)
-        expect(subject.nullification_list.dig("User", "first_name")&.count).to eq(3)
       end
     end
+
+    context "dependency: :nullify (no scope, primary_key other than ID)" do
+      let!(:nullify_user_ids) do
+        query = User.where.not(id: user.id).limit(2)
+        # Update those random 2 users
+        query.update_all(first_name: user.last_name)
+        ids = query.pluck(:id)
+        # Confirm we have 2
+        expect(ids).to have_attributes(size: 2)
+        ids
+      end
+
+      let!(:expected_nullification_list) do
+        {
+          "User" => {
+            "first_name" => nullify_user_ids.sort
+          }
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(User.reflect_on_association(:people_who_have_my_last_name_as_a_first_name).options[:dependent]).to eq(:nullify)
+        expect(User.where(id: nullify_user_ids).pluck(:first_name)).to eq([user.last_name] * 2)
+        expect(user.people_who_have_my_last_name_as_a_first_name.count).to eq(2)
+      end
+
+      it "should destroy and nullify successfully by rails" do
+        rails_destroy_all
+
+        expect(User.where(id: nullify_user_ids).pluck(:first_name)).to all(be_nil)
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute successfully" do
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        expect(User.where(id: nullify_user_ids).pluck(:first_name)).to all(be_nil)
+
+        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)  
+      end
+
+      it "should populate the 'deletion_list'" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the 'nullification_list'" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+    end
+
+    context "dependency: :nullify (no scope)" do
+      let(:rented_vehicle)    { create(:vehicle, rented_by: user)}
+      let(:rented_motorcycle) { create(:motorcycle, rented_by: user)}
+      let!(:nullify_vehicle_ids) do
+        [rented_vehicle.id, rented_motorcycle.id].sort
+      end
+
+      let!(:expected_nullification_list) do
+        {
+          "Vehicle" => {
+            "rented_by_id" => [rented_vehicle.id, rented_motorcycle.id].sort
+          }
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(User.reflect_on_association(:rented_vehicles).options[:dependent]).to eq(:nullify)
+        expect(user.rented_vehicles.count).to eq(2)
+      end
+
+      it "should destroy and nullify successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        expect(Vehicle.where(id: nullify_vehicle_ids).pluck(:rented_by_id)).to all(be_nil)
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute successfully" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        expect(Vehicle.where(id: nullify_vehicle_ids).pluck(:rented_by_id)).to all(be_nil)
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)  
+      end
+
+      it "should populate the 'deletion_list'" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the 'nullification_list'" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+    end
+
+    # TODO: NO has_many polymorphic assoc!!!
   end
 
   context 'belongs_to' do
     context "dependency: :destroy" do
-      let(:model_klass) { Address }
-      # TODO CREATE ADDRESS FACTROY
-      let!(:query) { model_klass.where(street: '123 Baker St.') }
-      let!(:address) { query.first }
+      let!(:model_klass) { Address }
+      let!(:address) { create(:address) }
+      let!(:user) { address.user }
+      let!(:query) { model_klass.where(street: address.street) }
 
       let!(:expected_address_ids) { [address.id] }
       let!(:expected_user_ids)    { [address.user.id] }
 
       let(:expected_snapshot_list) do
         {
-          "User" => [address.user.id].sort,
+          "User" => [user.id].sort,
           "Address" => [address.id].sort,
         }
       end
       let(:expected_deletion_list) do
         {
-          "UserWithNoDependents" => [address.user.id].sort,
+          "User" => [user.id].sort,
           "Address" => [address.id].sort,
         }
+      end
+      let!(:expected_nullification_list) do
+        {}
       end
 
       it 'should have the right association dependency' do
@@ -578,24 +690,27 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
         rails_destroy_all
 
-        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
         expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
         aggregate_failures do
           expect(do_request).to be_truthy
           expect(subject.errors).to be_empty
         end
 
-        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
         expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
-
 
       it "should populate the deletion list" do
         do_request
@@ -606,7 +721,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       it "should populate the nullification list" do
         do_request
 
-        expect(subject.nullification_list).to eq({})
+        expect(subject.nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
@@ -618,117 +733,53 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
 
     context "dependency: :destroy (polymorphic)" do
-      let(:model_klass) { PartWithDependentPartable }
-      let!(:query) { model_klass.where(name: ['Custom Engine', 'Custom Frame']) }
-      let!(:vehicle_a) { VehicleWithNoDependents.find_by_model('Civic') }
-      let!(:vehicle_b) { VehicleAlsoWithNoDependents.find_by_model('CRV') }
-      let!(:part_a) { query.first }
-      let!(:part_b) { query.last }
+      let(:model_klass) { Registration }
+      let!(:user)    { create(:user) }
+      let!(:vehicle) { create(:vehicle) }
+      let!(:registration_a) { create(:registration, registerable: user) }
+      let!(:registration_b) { create(:registration, registerable: vehicle) }
+      let!(:query) { model_klass.where(id: expected_registration_ids).order(:id) }
+      let!(:expected_registration_ids) { [registration_a.id, registration_b.id].sort }
 
-      let!(:expected_part_ids) { [part_a.id, part_b.id] }
-      let!(:expected_vehicle_ids) { [vehicle_a.id, vehicle_b.id] }
-
-      context 'with default options' do
-        let(:expected_snapshot_list) do
-          {
-            "Vehicle" => expected_vehicle_ids.sort,
-            "Part" => expected_part_ids.sort,
-          }
-        end
-        let(:expected_deletion_list) do
-          {
-            "VehicleWithNoDependents" => [vehicle_a.id],
-            "VehicleAlsoWithNoDependents" => [vehicle_b.id],
-            "PartWithDependentPartable" => expected_part_ids.sort,
-          }
-        end
-
-        it 'should have the right association dependency' do
-          expect(model_klass.reflect_on_association(:partable).options[:dependent]).to eq(:destroy)
-        end
-
-        it "should destroy successfully by rails" do
-          rails_destroy_all
-
-          post_action_snapshot = compare_db_snapshot(init_db_snapshot)
-          expect(post_action_snapshot[:added]).to eq({})
-          expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
-        end
-
-        it "should execute and mirror the rails destroy" do
-          aggregate_failures do
-            expect(do_request).to be_truthy
-            expect(subject.errors).to be_empty
-          end
-
-          post_action_snapshot = compare_db_snapshot(init_db_snapshot)
-          expect(post_action_snapshot[:added]).to eq({})
-          expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
-        end
-
-
-        it "should populate the deletion list" do
-          do_request
-
-          expect(subject.deletion_list).to eq(expected_deletion_list)
-        end
-
-        it "should populate the nullification list" do
-          do_request
-
-          expect(subject.nullification_list).to eq({})
-        end
-
-        it "should not populate the ignore_table lists" do
-          do_request
-
-          expect(subject.ignore_table_deletion_list).to eq({})
-          expect(subject.ignore_table_nullification_list).to eq({})
-        end
-      end
-    end
-  end
-
-  context 'has_one' do
-    context 'dependency: :destroy' do
-      let(:model_klass) { UserWithHasOneDependency }
-      let!(:query) { model_klass.where(email: 'test5@test.test') }
-      # vehicle will have multiple users, but only the one has_one will be destroyed.
-      let!(:user) { query.first }
-      let!(:profile) { user.profile }
-
-      let(:expected_snapshot_list) do
+      let!(:expected_snapshot_list) do
         {
-          "User" => [user.id].sort,
-          "Profile" => [profile.id].sort,
+          "User" => [user.id],
+          "Vehicle" => [vehicle.id],
+          "Registration" => expected_registration_ids,
         }
       end
-      let(:expected_deletion_list) do
+      let!(:expected_deletion_list) do
         {
-          "Profile" => [profile.id].sort,
-          "UserWithHasOneDependency" => [user.id].sort,
+          "User" => [user.id],
+          "Vehicle" => [vehicle.id],
+          "Registration" => expected_registration_ids,
         }
       end
+      let!(:expected_nullification_list) { {} }
 
       it 'should have the right association dependency' do
-        expect(model_klass.reflect_on_association(:profile).options[:dependent]).to eq(:destroy)
+        expect(model_klass.reflect_on_association(:registerable).options[:dependent]).to eq(:destroy)
       end
 
       it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
         rails_destroy_all
 
-        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
         expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
       end
 
       it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
         aggregate_failures do
           expect(do_request).to be_truthy
           expect(subject.errors).to be_empty
         end
 
-        post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
         expect(post_action_snapshot[:added]).to eq({})
         expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
       end
@@ -743,7 +794,76 @@ RSpec.describe BulkDependencyEraser::Manager do
       it "should populate the nullification list" do
         do_request
 
-        expect(subject.nullification_list).to eq({})
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+  end
+
+  context 'has_one' do
+    context 'dependency: :destroy' do
+      let(:model_klass) { User }
+      let!(:user) { create(:user) }
+      let!(:profile) { create(:profile, user:) }
+      let!(:query) { model_klass.where(id: user.id) }
+
+      let!(:expected_snapshot_list) do
+        {
+          "Profile" => [profile.id],
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_deletion_list) do
+        {
+          "Profile" => [profile.id],
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_nullification_list) { {} }
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:profile).options[:dependent]).to eq(:destroy)
+      end
+
+      it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
@@ -754,14 +874,217 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
     end
 
-    # PENDING
+    context 'dependency: :nullify' do
+      let(:model_klass) { User }
+      let!(:user) { create(:user) }
+      let!(:nullification_profile) { create(:nullification_profile, user:) }
+      let!(:query) { model_klass.where(id: user.id) }
+
+      let!(:expected_snapshot_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_deletion_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_nullification_list) do
+        {
+          "NullificationProfile" => {
+            "user_id" => [nullification_profile.id]
+          }
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:nullification_profile).options[:dependent]).to eq(:nullify)
+      end
+
+      it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
     context 'dependency: :destroy (polymorphic)' do
-      let(:model_klass) { VehicleWithHasOnePolymorphicPart }
-      
+      let(:model_klass) { User }
+      let!(:user) { create(:user) }
+      let!(:poly_profile) { create(:poly_profile, profilable: user) }
+      let!(:query) { model_klass.where(id: user.id) }
+
+      let!(:expected_snapshot_list) do
+        {
+          "PolyProfile" => [poly_profile.id],
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_deletion_list) do
+        {
+          "PolyProfile" => [poly_profile.id],
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_nullification_list) { {} }
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:poly_profile).options[:dependent]).to eq(:destroy)
+      end
+
+      it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
+    context 'dependency: :nullify (polymorphic)' do
+      let(:model_klass) { User }
+      let!(:user) { create(:user) }
+      let!(:nullify_poly_profile) { create(:nullify_poly_profile, profilable: user) }
+      let!(:query) { model_klass.where(id: user.id) }
+
+      let!(:expected_snapshot_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_deletion_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_nullification_list) do
+        {
+          "NullifyPolyProfile" => {
+            "profilable_id" => [nullify_poly_profile.id],
+            "profilable_type" => [nullify_poly_profile.id],
+          }
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:nullify_poly_profile).options[:dependent]).to eq(:nullify)
+      end
+
+      it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
     end
   end
 
-  # TODO:
+  # TODO scope instantiation!:
   # - need to support instantiation where scopes require it.
-  # context "build dependency tree for User (incl. scope with arity)" do
 end

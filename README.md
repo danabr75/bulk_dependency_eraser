@@ -5,6 +5,11 @@ Delete records in bulk, and their dependencies, without instantiation or callbac
 # Install
 gem 'bulk_dependency_eraser'
 
+# WARNING!
+To accomplish efficient mass deletion, we suppress ActiveRecord::InvalidForeignKey errors!
+It's upon you to ensure that your dependency trees in your models are set up properly, so as not to leave orphaned records.
+You can disable this suppression, but you may run into deletion order issues. (see :enable_invalid_foreign_key_detection option)
+
 # Ex usage:
   ```
   # Delete all queried users and their dependencies.
@@ -13,7 +18,7 @@ gem 'bulk_dependency_eraser'
   bdem.execute #=> true/false, depending on if successful.
   ```
   ```
-  # To see the dependency tree
+  # To see the dependency tree actualized as ids mapped by class name
   query = User.where(id: [...])
   bdem = BulkDependencyEraser::Manager.new(query:)
   bdem.build #=> true/false, depending on if successful.

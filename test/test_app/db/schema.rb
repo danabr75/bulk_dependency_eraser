@@ -12,6 +12,13 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.boolean "active"
   end
 
+  create_table "registrations", id: :integer, force: :cascade do |t|
+    t.boolean "active"
+    t.bigint "registerable_id"
+    t.string "registerable_type"
+    t.index ["registerable_type", "registerable_id"], name: "index_parts_on_registerable_type_and_registerable_id"
+  end
+
   create_table "messages", id: :integer, force: :cascade do |t|
     t.text "message"
     t.bigint "user_id"
@@ -49,10 +56,12 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.string "type"
     t.bigint "brand_id"
     t.bigint "owner_id"
+    t.bigint "rented_by_id"
   end
 
   add_foreign_key "vehicles", "brands"
   add_foreign_key "vehicles", "users", column: 'owner_id'
+  add_foreign_key "vehicles", "users", column: 'rented_by_id'
 
   create_table "users_vehicles", id: :integer, force: :cascade do |t|
     t.bigint "user_id"
@@ -77,22 +86,42 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.bigint "brand_id"
   end
 
-  add_foreign_key "logos", "brands"  
+  add_foreign_key "logos", "brands"
 
-  create_table "addresses", id: :serial, force: :cascade do |t|
+  create_table "addresses", id: :integer, force: :cascade do |t|
     t.string "street"
     t.bigint "user_id"
   end
 
-  add_foreign_key "addresses", "users"  
+  add_foreign_key "addresses", "users"
 
-  create_table "profiles", id: :serial, force: :cascade do |t|
+  create_table "profiles", id: :integer, force: :cascade do |t|
     t.bigint "user_id"
     t.text "bio"
     t.index ["user_id"], name: "index_profiles_on_user_id"
   end
 
-  add_foreign_key "profiles", "users"  
+  add_foreign_key "profiles", "users"
 
-  # add_index "users", ["first_name", "last_name"], name: "index_users_on_first_and_last_name", unique: true
+  create_table "nullification_profiles", id: :integer, force: :cascade do |t|
+    t.bigint "user_id"
+    t.text "bio"
+    t.index ["user_id"], name: "index_nullification_profiles_on_user_id"
+  end
+
+  add_foreign_key "nullification_profiles", "users"
+
+  create_table "poly_profiles", id: :integer, force: :cascade do |t|
+    t.text "bio"
+    t.bigint "profilable_id"
+    t.string "profilable_type"
+    t.index ["profilable_type", "profilable_id"], name: "index_poly_profiles_on_profilable_type_and_profilable_id"
+  end
+
+  create_table "nullify_poly_profiles", id: :integer, force: :cascade do |t|
+    t.text "bio"
+    t.bigint "profilable_id"
+    t.string "profilable_type"
+    t.index ["profilable_type", "profilable_id"], name: "index_nullify_poly_profiles_on_profilable_type_and_profilable_id"
+  end
 end

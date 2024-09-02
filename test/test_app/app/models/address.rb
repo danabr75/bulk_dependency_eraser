@@ -1,3 +1,4 @@
 class Address < ApplicationRecord
-  belongs_to :user, dependent: :destroy, class_name: "UserWithNoDependents"
+  belongs_to :user, dependent: :destroy
+  has_one :profile, through: :user, dependent: :destroy
 end
