@@ -260,7 +260,7 @@ module BulkDependencyEraser
       when 'ActiveRecord::Reflection::HasManyReflection'
         association_parser_has_many(parent_class, query, query_ids, association_name, type)
       when 'ActiveRecord::Reflection::HasOneReflection'
-        association_parser_has_many(parent_class, query, query_ids, association_name, type, { limit: 1 })
+        association_parser_has_many(parent_class, query, query_ids, association_name, type)
       when 'ActiveRecord::Reflection::BelongsToReflection'
         if type == :nullify
           report_error("#{parent_class.name}'s association '#{association_name}' - dependent 'nullify' invalid for 'belongs_to'")
@@ -347,10 +347,11 @@ module BulkDependencyEraser
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
       end
 
-      # Apply limit if has_one assocation (subset of has_many)
-      if opts[:limit]
-        assoc_query = assoc_query.limit(opts[:limit])
-      end
+      # Works in theory for ONE record's has_one, but we're dealing with potentially many
+      # # Apply limit if has_one assocation (subset of has_many)
+      # if opts[:limit]
+      #   assoc_query = assoc_query.limit(opts[:limit])
+      # end
 
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
