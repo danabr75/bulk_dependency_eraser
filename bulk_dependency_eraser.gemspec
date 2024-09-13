@@ -1,8 +1,10 @@
 # gem build bulk_dependency_eraser.gemspec
 
+require_relative 'lib/bulk_dependency_eraser/version'
+
 Gem::Specification.new do |s|
   s.name = %q{bulk_dependency_eraser}
-  s.version = "1.0.5"
+  s.version = ::BulkDependencyEraser::VERSION
   s.date = %q{2024-08-24}
   s.authors = ["benjamin.dana.software.dev@gmail.com"]
   s.summary = %q{A bulk deletion tool that deletes records and their dependencies without instantiation}
@@ -14,6 +16,7 @@ Gem::Specification.new do |s|
     "lib/bulk_dependency_eraser/deleter.rb",
     "lib/bulk_dependency_eraser/manager.rb",
     "lib/bulk_dependency_eraser/nullifier.rb",
+    "lib/bulk_dependency_eraser/version.rb",
   ]
   s.require_paths = ["lib"]
   s.homepage = 'https://github.com/danabr75/bulk_dependency_eraser'

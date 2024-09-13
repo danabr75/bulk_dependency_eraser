@@ -48,7 +48,8 @@ module BulkDependencyEraser
       'ActiveRecord::Reflection::HasAndBelongsToManyReflection'
     ].freeze
 
-    attr_reader :deletion_list, :nullification_list
+    # write access so that these can be edited in-place by end-users who might need to manually adjust deletion order.
+    attr_accessor :deletion_list, :nullification_list
     attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
 
     def initialize query:, opts: {}
