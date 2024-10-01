@@ -25,10 +25,25 @@ RSpec.describe BulkDependencyEraser::Builder do
     it "should execute within a database reading role" do
       do_request
 
+      expect(subject.nullification_list).to be_empty
       expect(subject.deletion_list).not_to be_empty
       expect(subject.errors).to be_empty
 
-      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(26).times
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(13).times
+    end
+  end
+
+  context 'using custom batch_size' do
+    let(:params) { super().merge(opts: { batch_size: 1 }) }
+
+    it "should execute within a database reading role" do
+      do_request
+
+      expect(subject.nullification_list).to be_empty
+      expect(subject.deletion_list).not_to be_empty
+      expect(subject.errors).to be_empty
+
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(47).times
     end
   end
 end

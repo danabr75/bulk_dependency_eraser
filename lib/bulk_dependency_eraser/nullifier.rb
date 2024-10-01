@@ -6,7 +6,11 @@ module BulkDependencyEraser
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during nullifications
       # - I can't think of a use-case where a nullification would generate an invalid key error
       # - Not hurting anything to leave it in, but might remove it in the future.
-      enable_invalid_foreign_key_detection: false
+      enable_invalid_foreign_key_detection: false,
+      # a general batching size
+      batch_size: 300,
+      # A specific batching size for this class, overrides the batch_size
+      nullify_batch_size: nil,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -115,6 +119,10 @@ module BulkDependencyEraser
 
     attr_reader :class_names_columns_and_ids
 
+    def batch_size
+      opts_c.nullify_batch_size || opts_c.batch_size
+    end
+
     def nullify_by_klass_column_and_ids klass, columns, ids
       nullify_columns = {}
 
@@ -127,8 +135,10 @@ module BulkDependencyEraser
         nullify_columns[columns] = nil
       end
 
-      nullify_in_db do
-        klass.unscoped.where(id: ids).update_all(nullify_columns)
+      ids.each_slice(batch_size) do |ids_subset|
+        nullify_in_db do
+          klass.unscoped.where(id: ids_subset).update_all(nullify_columns)
+        end
       end
     end
 

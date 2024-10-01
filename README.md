@@ -154,6 +154,22 @@ opts: { db_delete_wrapper: DATABASE_WRITE_WRAPPER }
 opts: { db_nullify_wrapper: DATABASE_WRITE_WRAPPER }
 ```
 
+### Option: Batching (reading, deleting, nullifying)
+```
+# You can pass custom batch limits.
+
+# Reading default: 10,000
+# Deleting default: 300
+# Nullification default: 300
+opts: { batch_size: <Integer> } # will be applied to all actions (reading/deleting/nullifying)
+
+opts: { read_batch_size: <Integer> }    # will be applied to reading (and will override :batch_size for reading)
+
+opts: { delete_batch_size: <Integer> }  # will be applied to reading (and will override :batch_size for deleting)
+
+opts: { nullify_batch_size: <Integer> } # will be applied to reading (and will override :batch_size for deleting)
+```
+
 ### TODO: Option: Instantiation
 - Feature currently is in development
 ```

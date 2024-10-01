@@ -13,7 +13,10 @@ module BulkDependencyEraser
       # Won't parse any table in this list
       ignore_tables_and_dependencies: [],
       ignore_klass_names_and_dependencies: [],
-      batching_size_limit: 500,
+      # a general batching size
+      batch_size: 10_000,
+      # A specific batching size for this class, overrides the batch_size
+      read_batch_size: nil,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -120,6 +123,10 @@ module BulkDependencyEraser
     attr_reader :table_names_to_parsed_klass_names
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
+    def batch_size
+      opts_c.read_batch_size || opts_c.batch_size
+    end
+
     def deletion_query_parser query, association_parent = nil
       # necessary for "ActiveRecord::Reflection::ThroughReflection" use-case
       # force_through_destroy_chains = options[:force_destroy_chain] || {}
@@ -165,9 +172,12 @@ module BulkDependencyEraser
         return
       end
 
-      # Pluck IDs of the current query
-      query_ids = read_from_db do
-        query.pluck(:id)
+      # Pluck IDs of the current query (batchified)
+      query_ids = []
+      query.in_batches(of: batch_size) do |batch|
+        read_from_db do
+          query_ids += batch.pluck(:id)
+        end
       end
 
       deletion_list[klass_name] ||= []
@@ -340,8 +350,11 @@ module BulkDependencyEraser
       # - handle primary key edge cases
       # - The associations might not be using the primary_key of the klass table, but we can support that here.
       if specified_primary_key && specified_primary_key&.to_s != 'id'
-        alt_primary_ids = read_from_db do
-          query.pluck(specified_primary_key)
+        alt_primary_ids = []
+        query.in_batches(of: batch_size) do |batch|
+          read_from_db do
+            alt_primary_ids += query.pluck(specified_primary_key)
+          end
         end
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => alt_primary_ids)
       else
@@ -364,8 +377,11 @@ module BulkDependencyEraser
       elsif type == :nullify
         # No need for recursion here.
         # - we're not destroying these assocs (just nullifying foreign_key columns) so we don't need to parse their dependencies.
-        assoc_ids = read_from_db do
-          assoc_query.pluck(:id)
+        assoc_ids = []
+        assoc_query.in_batches(of: batch_size) do |batch|
+          read_from_db do
+            assoc_ids += batch.pluck(:id)
+          end
         end
 
         # No assoc_ids, no need to add it to the nullification list
@@ -409,7 +425,7 @@ module BulkDependencyEraser
       # assoc_query = assoc_klass.unscoped
       # query.in_batches
 
-      assoc_klass.in_batches(of: opts_c.batching_size_limit) do |batch|
+      assoc_klass.in_batches(of: batch_size) do |batch|
         batch.each do |record|
           record.send(association_name)
         end
@@ -472,21 +488,23 @@ module BulkDependencyEraser
         return
       end
 
-      assoc_query = read_from_db do
-        assoc_query.where(
-          specified_primary_key.to_sym => query.pluck(specified_foreign_key)
-        )
-      end
-
-      if type == :delete
-        # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
-        deletion_query_parser(assoc_query, parent_class)
-      elsif type == :restricted
-        if traverse_restricted_dependency?(parent_class, reflection, assoc_query)
-          deletion_query_parser(assoc_query, parent_class)
+      query.in_batches(of: batch_size) do |batch|
+        assoc_batch_query = read_from_db do
+          assoc_query.where(
+            specified_primary_key.to_sym => batch.pluck(specified_foreign_key)
+          )
         end
-      else
-        raise "invalid parsing type: #{type}"
+
+        if type == :delete
+          # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
+          deletion_query_parser(assoc_batch_query, parent_class)
+        elsif type == :restricted
+          if traverse_restricted_dependency?(parent_class, reflection, assoc_batch_query)
+            deletion_query_parser(assoc_batch_query, parent_class)
+          end
+        else
+          raise "invalid parsing type: #{type}"
+        end
       end
     end
 
@@ -538,28 +556,30 @@ module BulkDependencyEraser
         return
       end
 
-      foreign_ids_by_type = read_from_db do
-        query.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
-          hash.key?(type) ? hash[type] << id : hash[type] = [id]
+      query.in_batches(of: batch_size) do |batch|
+        foreign_ids_by_type = read_from_db do
+          batch.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
+            hash.key?(type) ? hash[type] << id : hash[type] = [id]
+          end
         end
-      end
 
-      if type == :delete
-        # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
-        foreign_ids_by_type.each do |type, ids|
-          assoc_klass = type.constantize
-          deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
-        end
-      elsif type == :restricted
-        if traverse_restricted_dependency_for_belongs_to_poly?(parent_class, reflection, foreign_ids_by_type)
+        if type == :delete
           # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
           foreign_ids_by_type.each do |type, ids|
             assoc_klass = type.constantize
             deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
           end
+        elsif type == :restricted
+          if traverse_restricted_dependency_for_belongs_to_poly?(parent_class, reflection, foreign_ids_by_type)
+            # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
+            foreign_ids_by_type.each do |type, ids|
+              assoc_klass = type.constantize
+              deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
+            end
+          end
+        else
+          raise "invalid parsing type: #{type}"
         end
-      else
-        raise "invalid parsing type: #{type}"
       end
     end
 

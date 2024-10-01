@@ -46,4 +46,16 @@ RSpec.describe BulkDependencyEraser::Deleter do
       expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(3).times
     end
   end
+
+  context 'using custom batch_size' do
+    let(:params) { super().merge(opts: { batch_size: 1 }) }
+
+    it "should execute within a database writing role" do
+      do_request
+
+      expect(subject.errors).to be_empty
+
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(14).times
+    end
+  end
 end

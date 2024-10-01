@@ -4,7 +4,11 @@ module BulkDependencyEraser
       verbose: false,
       db_delete_wrapper: self::DEFAULT_DB_WRAPPER,
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during deletions
-      enable_invalid_foreign_key_detection: false
+      enable_invalid_foreign_key_detection: false,
+      # a general batching size
+      batch_size: 300,
+      # A specific batching size for this class, overrides the batch_size
+      delete_batch_size: nil,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -55,14 +59,20 @@ module BulkDependencyEraser
 
     protected
 
-    def delete_by_klass_and_ids klass, ids
-      puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
-      delete_in_db do
-        klass.unscoped.where(id: ids).delete_all
-      end
+    attr_reader :class_names_and_ids
+
+    def batch_size
+      opts_c.delete_batch_size || opts_c.batch_size
     end
 
-    attr_reader :class_names_and_ids
+    def delete_by_klass_and_ids klass, ids
+      puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
+      ids.each_slice(batch_size) do |ids_subset|
+        delete_in_db do
+          klass.unscoped.where(id: ids_subset).delete_all
+        end
+      end
+    end
 
     def delete_in_db(&block)
       puts "Deleting from DB..." if opts_c.verbose

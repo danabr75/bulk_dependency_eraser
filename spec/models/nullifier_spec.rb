@@ -12,21 +12,21 @@ RSpec.describe BulkDependencyEraser::Nullifier do
   let(:do_request) { subject.execute }
 
   let!(:input_nullification_list) do
-      {
-        # 3 Users to nullify: Ben Dana, Rob Dana, Ben Franklin
-        "User" => {
-          # Ben Dana, because he's also :similarly_named_users of himself
-          # Ben Franklin, because he's a :similarly_named_users of Ben Dana
-          # - Ben Franklin will delete Rob Dana, because Rob Dana is a :probable_family_members of Ben Franklin
-          # Rob Dana, since he is being deleted, will nillify himself, because he's in his own :similarly_named_users list
-          #
-          # The only user unaffected is Victor Frankenstein, since he shares no names with the others.
-          "first_name" => User.where(first_name: %w[Ben Rob]).pluck(:id).sort
-        },
-        "Part" => {
-          "name" => Part.where(name: 'Alternator').pluck(:id).sort
-        },
-      }
+    {
+      # 3 Users to nullify: Ben Dana, Rob Dana, Ben Franklin
+      "User" => {
+        # Ben Dana, because he's also :similarly_named_users of himself
+        # Ben Franklin, because he's a :similarly_named_users of Ben Dana
+        # - Ben Franklin will delete Rob Dana, because Rob Dana is a :probable_family_members of Ben Franklin
+        # Rob Dana, since he is being deleted, will nillify himself, because he's in his own :similarly_named_users list
+        #
+        # The only user unaffected is Victor Frankenstein, since he shares no names with the others.
+        "first_name" => User.where(first_name: %w[Ben Rob]).pluck(:id).sort
+      },
+      "Part" => {
+        "name" => Part.where(name: 'Alternator').pluck(:id).sort
+      },
+    }
   end
 
   before do
@@ -47,6 +47,18 @@ RSpec.describe BulkDependencyEraser::Nullifier do
       expect(subject.errors).to be_empty
 
       expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(2).times
+    end
+  end
+
+  context 'using custom batch_size' do
+    let(:params) { super().merge(opts: { batch_size: 1 }) }
+
+    it "should execute within a database writing role" do
+      do_request
+
+      expect(subject.errors).to be_empty
+
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(3).times
     end
   end
 end
