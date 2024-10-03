@@ -1,3 +1,6 @@
+require 'active_support'
+require 'active_support/core_ext/module/delegation'
+
 module BulkDependencyEraser
   class Manager < Base
     DEFAULT_OPTS = {
@@ -38,6 +41,8 @@ module BulkDependencyEraser
       else
         puts "Builder execution SUCCESSFUL" if opts_c.verbose
       end
+
+      @built = true
 
       return builder_execution
     end

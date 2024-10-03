@@ -90,6 +90,10 @@ module BulkDependencyEraser
 
     def build
       begin
+        if opts_c.verbose
+          puts "Starting build for #{@query.is_a?(ActiveRecord::Relation) ? @query.klass.name : @query.name}"
+        end
+
         deletion_query_parser(@query)
 
         uniqify_errors!
@@ -159,9 +163,9 @@ module BulkDependencyEraser
 
       if opts_c.verbose
         if association_parent
-          puts "Building #{klass_name}"
+          puts "Building #{association_parent}, association of #{klass_name}"
         else
-          puts "Building #{association_parent}, assocation of #{klass_name}"
+          puts "Building #{klass_name}"
         end
       end
 
@@ -185,6 +189,7 @@ module BulkDependencyEraser
       # prevent infinite recursion here.
       # - Remove any IDs that have been processed before
       query_ids = query_ids - deletion_list[klass_name]
+
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
         # quick cleanup, if turns out was an empty class
