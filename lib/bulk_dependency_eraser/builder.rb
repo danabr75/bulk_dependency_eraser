@@ -267,9 +267,24 @@ module BulkDependencyEraser
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
-      if self.class::DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES.include?(reflection_type)
-        report_error("Dependency detected on #{parent_class.name}'s '#{association_name}' - association doesn't support dependency")
-        return 
+      is_polymorphic = reflection.options[:polymorphic]
+      unless is_polymorphic
+        klass = reflection.klass
+
+        if ignore_table_name_and_dependencies.include?(klass.table_name)
+          # Not parsing, table and dependencies ignorable
+          return
+        end
+
+        if ignore_klass_name_and_dependencies.include?(klass.name)
+          # Not parsing, table and dependencies ignorable
+          return
+        end
+
+        if self.class::DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES.include?(reflection_type)
+          report_error("Dependency detected on #{parent_class.name}'s '#{association_name}' - association doesn't support dependency")
+          return 
+        end
       end
 
       case reflection_type
