@@ -13,10 +13,13 @@ module BulkDependencyEraser
       # Won't parse any table in this list
       ignore_tables_and_dependencies: [],
       ignore_klass_names_and_dependencies: [],
+      disable_batching: false,
       # a general batching size
       batch_size: 10_000,
       # A specific batching size for this class, overrides the batch_size
       read_batch_size: nil,
+      # A specific read batching disable option
+      disable_read_batching: nil,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -85,6 +88,27 @@ module BulkDependencyEraser
         end
       end
 
+      # Reverse order all Class names, and all their IDs
+      # - if a class self-referenced itself the children will be deleted/nullified before parent
+      deletion_list.keys.reverse.each do |class_name|
+        deletion_list[class_name] = deletion_list.delete(class_name).reverse
+
+        # TODO: Hard to test if not sorted
+        deletion_list[class_name] = deletion_list.delete(class_name).sort if Rails.env.test?
+      end
+
+      nullification_list.keys.reverse.each do |class_name|
+        columns_and_ids = nullification_list.delete(class_name)
+        # we don't need to reverse the column keys
+        columns_and_ids.keys.each do |column_name, ids|
+          columns_and_ids[column_name] = columns_and_ids.delete(column_name).reverse
+
+          # TODO: Hard to test if not sorted
+          columns_and_ids[column_name] = columns_and_ids.delete(column_name).sort if Rails.env.test?
+        end
+        nullification_list[class_name] = columns_and_ids
+      end
+
       return build_result
     end
 
@@ -127,8 +151,37 @@ module BulkDependencyEraser
     attr_reader :table_names_to_parsed_klass_names
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
+    def pluck_from_query query, column = :id
+      query_ids = []
+      read_from_db do
+        # If the query has a limit, then we don't want to clobber with batching.
+        if batching_disabled? || !query.where({}).limit_value.nil?
+          # query without batching
+          query_ids = query.pluck(column)
+        else
+          # query with batching
+          offset = 0
+          loop do
+            new_query_ids = query.offset(offset).limit(batch_size).pluck(column)
+            query_ids += new_query_ids
+
+            break if new_query_ids.size < batch_size
+
+            # Move to the next batch
+            offset += batch_size
+          end
+        end
+      end
+
+      return query_ids
+    end
+
     def batch_size
-      opts_c.read_batch_size || opts_c.batch_size
+      opts_c.read_batch_size.nil? ? opts_c.batch_size : opts_c.read_batch_size
+    end
+
+    def batching_disabled?
+      opts_c.disable_read_batching.nil? ? opts_c.disable_batching : opts_c.disable_read_batching
     end
 
     def deletion_query_parser query, association_parent = nil
@@ -176,13 +229,8 @@ module BulkDependencyEraser
         return
       end
 
-      # Pluck IDs of the current query (batchified)
-      query_ids = []
-      query.in_batches(of: batch_size) do |batch|
-        read_from_db do
-          query_ids += batch.pluck(:id)
-        end
-      end
+      # Pluck IDs of the current query
+      query_ids = pluck_from_query(query)
 
       deletion_list[klass_name] ||= []
 
@@ -203,7 +251,7 @@ module BulkDependencyEraser
 
       # Hard to test if not sorted
       # - if we had more advanced rspec matches, we could do away with this.
-      deletion_list[klass_name].sort! if Rails.env.test?
+      # deletion_list[klass_name].sort! if Rails.env.test?
 
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
@@ -370,12 +418,7 @@ module BulkDependencyEraser
       # - handle primary key edge cases
       # - The associations might not be using the primary_key of the klass table, but we can support that here.
       if specified_primary_key && specified_primary_key&.to_s != 'id'
-        alt_primary_ids = []
-        query.in_batches(of: batch_size) do |batch|
-          read_from_db do
-            alt_primary_ids += query.pluck(specified_primary_key)
-          end
-        end
+        alt_primary_ids = pluck_from_query(query, specified_primary_key)
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => alt_primary_ids)
       else
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
@@ -397,12 +440,7 @@ module BulkDependencyEraser
       elsif type == :nullify
         # No need for recursion here.
         # - we're not destroying these assocs (just nullifying foreign_key columns) so we don't need to parse their dependencies.
-        assoc_ids = []
-        assoc_query.in_batches(of: batch_size) do |batch|
-          read_from_db do
-            assoc_ids += batch.pluck(:id)
-          end
-        end
+        assoc_ids = pluck_from_query(assoc_query)
 
         # No assoc_ids, no need to add it to the nullification list
         return if assoc_ids.none?
@@ -412,7 +450,7 @@ module BulkDependencyEraser
         nullification_list[assoc_klass_name][specified_foreign_key] += assoc_ids
         nullification_list[assoc_klass_name][specified_foreign_key].uniq!
 
-        nullification_list[assoc_klass_name][specified_foreign_key].sort! if Rails.env.test?
+        # nullification_list[assoc_klass_name][specified_foreign_key].sort! if Rails.env.test?
 
         # Also nullify the 'type' field, if the association is polymorphic
         if specified_foreign_type
@@ -420,7 +458,7 @@ module BulkDependencyEraser
           nullification_list[assoc_klass_name][specified_foreign_type] += assoc_ids
           nullification_list[assoc_klass_name][specified_foreign_type].uniq!
 
-          nullification_list[assoc_klass_name][specified_foreign_type].sort! if Rails.env.test?
+          # nullification_list[assoc_klass_name][specified_foreign_type].sort! if Rails.env.test?
         end
       else
         raise "invalid parsing type: #{type}"
@@ -508,23 +546,20 @@ module BulkDependencyEraser
         return
       end
 
-      query.in_batches(of: batch_size) do |batch|
-        assoc_batch_query = read_from_db do
-          assoc_query.where(
-            specified_primary_key.to_sym => batch.pluck(specified_foreign_key)
-          )
-        end
+      foreign_keys = pluck_from_query(query, specified_foreign_key)
+      assoc_query = assoc_query.where(
+        specified_primary_key.to_sym => foreign_keys
+      )
 
-        if type == :delete
-          # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
-          deletion_query_parser(assoc_batch_query, parent_class)
-        elsif type == :restricted
-          if traverse_restricted_dependency?(parent_class, reflection, assoc_batch_query)
-            deletion_query_parser(assoc_batch_query, parent_class)
-          end
-        else
-          raise "invalid parsing type: #{type}"
+      if type == :delete
+        # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
+        deletion_query_parser(assoc_query, parent_class)
+      elsif type == :restricted
+        if traverse_restricted_dependency?(parent_class, reflection, assoc_query)
+          deletion_query_parser(assoc_query, parent_class)
         end
+      else
+        raise "invalid parsing type: #{type}"
       end
     end
 
@@ -539,6 +574,8 @@ module BulkDependencyEraser
     # In this case, it's like a `belongs_to :polymorphicable, polymorphic: true, dependent: :destroy` use-case
     # - it's unusual, but valid use-case
     def association_parser_belongs_to_polymorphic(parent_class, query, query_ids, association_name, type)
+      # raise "Unsupported use-case: #{parent_class.name} -> belongs_to :polymorphicable, polymorphic: true, dependent: :destroy"
+
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
@@ -576,30 +613,30 @@ module BulkDependencyEraser
         return
       end
 
-      query.in_batches(of: batch_size) do |batch|
-        foreign_ids_by_type = read_from_db do
-          batch.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
-            hash.key?(type) ? hash[type] << id : hash[type] = [id]
-          end
+      # Not sure how to limit/offset batch this right now.
+      # - it's a rare use-case, let's just leave this as a TODO:
+      foreign_ids_by_type = read_from_db do
+        query.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
+          hash.key?(type) ? hash[type] << id : hash[type] = [id]
         end
+      end
 
-        if type == :delete
+      if type == :delete
+        # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
+        foreign_ids_by_type.each do |type, ids|
+          assoc_klass = type.constantize
+          deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
+        end
+      elsif type == :restricted
+        if traverse_restricted_dependency_for_belongs_to_poly?(parent_class, reflection, foreign_ids_by_type)
           # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
           foreign_ids_by_type.each do |type, ids|
             assoc_klass = type.constantize
             deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
           end
-        elsif type == :restricted
-          if traverse_restricted_dependency_for_belongs_to_poly?(parent_class, reflection, foreign_ids_by_type)
-            # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
-            foreign_ids_by_type.each do |type, ids|
-              assoc_klass = type.constantize
-              deletion_query_parser(assoc_klass.where(id: ids), assoc_klass)
-            end
-          end
-        else
-          raise "invalid parsing type: #{type}"
         end
+      else
+        raise "invalid parsing type: #{type}"
       end
     end
 

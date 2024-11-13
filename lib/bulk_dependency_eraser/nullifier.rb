@@ -7,10 +7,13 @@ module BulkDependencyEraser
       # - I can't think of a use-case where a nullification would generate an invalid key error
       # - Not hurting anything to leave it in, but might remove it in the future.
       enable_invalid_foreign_key_detection: false,
+      disable_batching: false,
       # a general batching size
       batch_size: 300,
       # A specific batching size for this class, overrides the batch_size
       nullify_batch_size: nil,
+      # A specific batching size for this class, overrides the batch_size
+      disable_nullify_batching: nil,
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -84,11 +87,11 @@ module BulkDependencyEraser
         current_class_name = 'N/A'
         current_column = 'N/A'
         begin
-          class_names_columns_and_ids.keys.reverse.each do |class_name|
+          # class names and column_and_ids should have already been reversed in builder
+          class_names_columns_and_ids.each do |class_name, columns_and_ids|
             current_class_name = class_name
             klass = class_name.constantize
 
-            columns_and_ids = class_names_columns_and_ids[class_name]
             columns_and_ids.each do |column, ids|
               current_column = column
 
@@ -123,6 +126,10 @@ module BulkDependencyEraser
       opts_c.nullify_batch_size || opts_c.batch_size
     end
 
+    def batching_disabled?
+      opts_c.disable_nullify_batching.nil? ? opts_c.disable_batching : opts_c.disable_nullify_batching
+    end
+
     def nullify_by_klass_column_and_ids klass, columns, ids
       nullify_columns = {}
 
@@ -135,9 +142,15 @@ module BulkDependencyEraser
         nullify_columns[columns] = nil
       end
 
-      ids.each_slice(batch_size) do |ids_subset|
+      if batching_disabled?
         nullify_in_db do
-          klass.unscoped.where(id: ids_subset).update_all(nullify_columns)
+          klass.unscoped.where(id: ids).update_all(nullify_columns)
+        end
+      else
+        ids.each_slice(batch_size) do |ids_subset|
+          nullify_in_db do
+            klass.unscoped.where(id: ids_subset).update_all(nullify_columns)
+          end
         end
       end
     end

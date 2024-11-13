@@ -31,25 +31,30 @@ RSpec.describe BulkDependencyEraser::Manager do
       db_nullify_wrapper: ->(block) { block.call },
       db_delete_wrapper: ->(block) { block.call },
     },
+    { query_modifier: ->(model_klass) { model_klass.limit(1_000_000)  } },
+    { query_modifier: ->(model_klass) { model_klass.limit(1)  } },
   ]
 
   options.each do |option_set|
     context "with options: #{option_set}" do
       context 'has_many' do
         let(:model_klass) { User }
-        let(:query) { model_klass.where(email: 'test@test.test') }
+        let(:query) {
+          q = model_klass.where(email: 'test@test.test')
+          if option_set&.dig(:query_modifier)
+            q = option_set[:query_modifier].call(q)
+          end
+          q
+        }
         let!(:user) { query.first }
         
         let(:params) do
           if option_set
-            { query:, opts: option_set }
+            { query:, opts: option_set.except(:query_modifier) }
           else
             { query: }
           end
         end
-
-
-        let(:query) { model_klass.where(email: 'test@test.test') }
 
         let!(:expected_owned_vehicle_ids) { user.owned_vehicles.pluck(:id) }
         let!(:vehicle_part_ids)   { Part.where(partable_type: 'Vehicle', partable_id: expected_owned_vehicle_ids).pluck(:id) }
@@ -322,7 +327,7 @@ RSpec.describe BulkDependencyEraser::Manager do
 
               subject.build
 
-              expect(subject.ignore_table_deletion_list).to eq({ 'UsersVehicle' => (users_vehicle_ids + owner_vehicle_ids).uniq.sort })
+              expect(subject.ignore_table_deletion_list).to eq({ 'UsersVehicle' => (users_vehicle_ids.sort + owner_vehicle_ids.sort).uniq })
 
               # manually delete the join table, in the right sequence
               UsersVehicle.where(id: subject.ignore_table_deletion_list['UsersVehicle']).delete_all
@@ -354,7 +359,7 @@ RSpec.describe BulkDependencyEraser::Manager do
             it "should populate the ignore_table lists" do
               do_request
 
-              expect(subject.ignore_table_deletion_list).to eq({ 'UsersVehicle' => (users_vehicle_ids + owner_vehicle_ids).uniq.sort })
+              expect(subject.ignore_table_deletion_list).to eq({ 'UsersVehicle' => (users_vehicle_ids.sort + owner_vehicle_ids.sort).uniq })
               expect(subject.ignore_table_nullification_list).to eq({})
             end
           end

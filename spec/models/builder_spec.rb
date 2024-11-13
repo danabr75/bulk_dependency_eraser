@@ -29,7 +29,7 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.deletion_list).not_to be_empty
       expect(subject.errors).to be_empty
 
-      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(13).times
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(26).times
     end
   end
 
@@ -43,7 +43,7 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(subject.deletion_list).not_to be_empty
       expect(subject.errors).to be_empty
 
-      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(47).times
+      expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(26).times
     end
   end
 end
