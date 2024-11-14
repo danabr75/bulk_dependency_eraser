@@ -427,11 +427,8 @@ module BulkDependencyEraser
         assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
       end
 
-      # Works in theory for ONE record's has_one, but we're dealing with potentially many
-      # # Apply limit if has_one assocation (subset of has_many)
-      # if opts[:limit]
-      #   assoc_query = assoc_query.limit(opts[:limit])
-      # end
+      # remove any ordering or limits imposed on the association queries from the association definitions
+      assoc_query = assoc_query.reorder('').unscope(:limit)
 
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
@@ -554,6 +551,9 @@ module BulkDependencyEraser
         specified_primary_key.to_sym => foreign_keys
       )
 
+      # remove any ordering or limits imposed on the association queries from the association definitions
+      assoc_query = assoc_query.reorder('').unscope(:limit)
+
       if type == :delete
         # Recursively call 'deletion_query_parser' on association query, to delete any if the assoc's dependencies
         deletion_query_parser(assoc_query, parent_class)
@@ -572,6 +572,7 @@ module BulkDependencyEraser
     # This method will replicate association_parser, but instantiate and iterate in batches
     def association_parser_belongs_to_instantiation(parent_class, query, query_ids, association_name, type)
       # pending
+      raise "Invalid State! Not ready to instantiate!"
     end
 
     # In this case, it's like a `belongs_to :polymorphicable, polymorphic: true, dependent: :destroy` use-case

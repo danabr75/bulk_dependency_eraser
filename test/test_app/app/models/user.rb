@@ -11,6 +11,8 @@ class User < ApplicationRecord
 
   has_many :rented_vehicles, class_name: 'Vehicle', foreign_key: :rented_by_id, dependent: :nullify
 
+  has_many :rented_vehicles_10, -> { limit(10).order(created_at: :desc) }, class_name: 'Vehicle', foreign_key: :rented_by_id, dependent: :nullify
+
   # makes no logical sense, but using as a test use-case
   has_many :people_who_have_my_last_name_as_a_first_name, class_name: 'User', foreign_key: :first_name, primary_key: :last_name, dependent: :nullify
 
