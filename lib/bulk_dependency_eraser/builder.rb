@@ -163,11 +163,12 @@ module BulkDependencyEraser
     attr_reader :table_names_to_parsed_klass_names
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
-    def custom_scope_for_klass_name(klass)
+    def custom_scope_for_query(query)
+      klass = query.klass
       if opts_c.reading_proc_scopes_per_class_name.key?(klass.name)
-        opts_c.reading_proc_scopes_per_class_name[klass.name]
+        opts_c.reading_proc_scopes_per_class_name[klass.name].call(query)
       else
-        super(klass)
+        super(query)
       end
     end
 
@@ -175,7 +176,7 @@ module BulkDependencyEraser
       # ordering shouldn't matter in these queries, and would slow it down
       # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
       query = query.reorder('')
-      query = custom_scope_for_klass_name(query.klass).call(query)
+      query = custom_scope_for_query(query)
 
       query_ids = []
       read_from_db do
@@ -639,7 +640,7 @@ module BulkDependencyEraser
         return
       end
 
-      query = custom_scope_for_klass_name(query.klass).call(query)
+      query = custom_scope_for_query(query)
 
       foreign_ids_by_type = read_from_db do
         if batching_disabled? || !query.where({}).limit_value.nil?

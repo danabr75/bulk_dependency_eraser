@@ -37,17 +37,18 @@ module BulkDependencyEraser
 
     protected
 
-    def custom_scope_for_klass_name(klass)
+    def custom_scope_for_query(query)
+      klass = query.klass
       if opts_c.proc_scopes_per_class_name.key?(klass.name)
-        opts_c.proc_scopes_per_class_name[klass.name]
+        opts_c.proc_scopes_per_class_name[klass.name].call(query)
       else
         # See if non-class-mapped proc returns a value
-        non_class_name_mapped_query = opts_c.proc_scopes.call(klass.where({})) # convert klass to query
+        non_class_name_mapped_query = opts_c.proc_scopes.call(query)
         if !non_class_name_mapped_query.nil?
-          return opts_c.proc_scopes
+          return non_class_name_mapped_query
         else
           # No custom wrapper, return non-effect default
-          return self.class::DEFAULT_KLASS_MAPPED_SCOPE_WRAPPER
+          return self.class::DEFAULT_KLASS_MAPPED_SCOPE_WRAPPER.call(query)
         end
       end
     end

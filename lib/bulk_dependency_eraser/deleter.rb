@@ -77,11 +77,12 @@ module BulkDependencyEraser
 
     attr_reader :class_names_and_ids
 
-    def custom_scope_for_klass_name(klass)
+    def custom_scope_for_query(query)
+      klass = query.klass
       if opts_c.deletion_proc_scopes_per_class_name.key?(klass.name)
-        opts_c.deletion_proc_scopes_per_class_name[klass.name]
+        opts_c.deletion_proc_scopes_per_class_name[klass.name].call(query)
       else
-        super(klass)
+        super(query)
       end
     end
 
@@ -96,7 +97,7 @@ module BulkDependencyEraser
     def delete_by_klass_and_ids klass, ids
       puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
       query = klass.unscoped
-      query = custom_scope_for_klass_name(klass).call(query)
+      query = custom_scope_for_query(query)
 
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose

@@ -135,11 +135,12 @@ module BulkDependencyEraser
 
     attr_reader :class_names_columns_and_ids
 
-    def custom_scope_for_klass_name(klass)
+    def custom_scope_for_query(query)
+      klass = query.klass
       if opts_c.nullification_proc_scopes_per_class_name.key?(klass.name)
-        opts_c.nullification_proc_scopes_per_class_name[klass.name]
+        opts_c.nullification_proc_scopes_per_class_name[klass.name].call(query)
       else
-        super(klass)
+        super(query)
       end
     end
 
@@ -153,7 +154,7 @@ module BulkDependencyEraser
 
     def nullify_by_klass_column_and_ids klass, columns, ids
       query = klass.unscoped
-      query = custom_scope_for_klass_name(klass).call(query)
+      query = custom_scope_for_query(query)
 
       nullify_columns = {}
       # supporting nullification of groups of columns simultaneously
