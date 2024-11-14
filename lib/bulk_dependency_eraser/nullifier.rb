@@ -15,8 +15,16 @@ module BulkDependencyEraser
       # A specific batching size for this class, overrides the batch_size
       disable_nullify_batching: nil,
       # Applied to all queries. Useful for taking advantage of specific indexes
+      # - not indexed by klass name. Proc would handle the logic for that.
+      # - 3rd, and lowest, priority of scopes
+      # - accepts rails query as parameter
+      # - return nil if no applicable scope.
+      proc_scopes: self::DEFAULT_SCOPE_WRAPPER,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      # - 2nd highest priority of scopes
       proc_scopes_per_class_name: {},
-      # Applied to deletion queries
+      # Applied to nullification queries
+      # - 1st priority of scopes
       nullification_proc_scopes_per_class_name: {},
     }.freeze
 
@@ -127,11 +135,11 @@ module BulkDependencyEraser
 
     attr_reader :class_names_columns_and_ids
 
-    def custom_scope_for_klass_name(klass_name)
-      if opts_c.nullification_proc_scopes_per_class_name.key?(klass_name)
-        opts_c.nullification_proc_scopes_per_class_name[klass_name]
+    def custom_scope_for_klass_name(klass)
+      if opts_c.nullification_proc_scopes_per_class_name.key?(klass.name)
+        opts_c.nullification_proc_scopes_per_class_name[klass.name]
       else
-        super(klass_name)
+        super(klass)
       end
     end
 
@@ -145,7 +153,7 @@ module BulkDependencyEraser
 
     def nullify_by_klass_column_and_ids klass, columns, ids
       query = klass.unscoped
-      query = custom_scope_for_klass_name(klass.name).call(query)
+      query = custom_scope_for_klass_name(klass).call(query)
 
       nullify_columns = {}
       # supporting nullification of groups of columns simultaneously

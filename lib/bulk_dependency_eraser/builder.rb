@@ -21,8 +21,16 @@ module BulkDependencyEraser
       # A specific read batching disable option
       disable_read_batching: nil,
       # Applied to all queries. Useful for taking advantage of specific indexes
+      # - not indexed by klass name. Proc would handle the logic for that.
+      # - 3rd, and lowest, priority of scopes
+      # - accepts rails query as parameter
+      # - return nil if no applicable scope.
+      proc_scopes: self::DEFAULT_SCOPE_WRAPPER,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      # - 2nd highest priority of scopes
       proc_scopes_per_class_name: {},
-      # Applied to deletion queries
+      # Applied to reading queries
+      # - 1st priority of scopes
       reading_proc_scopes_per_class_name: {},
     }.freeze
 
@@ -155,11 +163,11 @@ module BulkDependencyEraser
     attr_reader :table_names_to_parsed_klass_names
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
-    def custom_scope_for_klass_name(klass_name)
-      if opts_c.reading_proc_scopes_per_class_name.key?(klass_name)
-        opts_c.reading_proc_scopes_per_class_name[klass_name]
+    def custom_scope_for_klass_name(klass)
+      if opts_c.reading_proc_scopes_per_class_name.key?(klass.name)
+        opts_c.reading_proc_scopes_per_class_name[klass.name]
       else
-        super(klass_name)
+        super(klass)
       end
     end
 
@@ -167,7 +175,7 @@ module BulkDependencyEraser
       # ordering shouldn't matter in these queries, and would slow it down
       # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
       query = query.reorder('')
-      query = custom_scope_for_klass_name(query.klass.name).call(query)
+      query = custom_scope_for_klass_name(query.klass).call(query)
 
       query_ids = []
       read_from_db do
@@ -631,7 +639,7 @@ module BulkDependencyEraser
         return
       end
 
-      query = custom_scope_for_klass_name(query.klass.name).call(query)
+      query = custom_scope_for_klass_name(query.klass).call(query)
 
       foreign_ids_by_type = read_from_db do
         if batching_disabled? || !query.where({}).limit_value.nil?

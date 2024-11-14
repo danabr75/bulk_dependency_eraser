@@ -57,6 +57,8 @@ RSpec.describe BulkDependencyEraser::Manager do
       deletion_proc_scopes_per_class_name:      { 'User' => ->(query) { query.order(id: :desc) } },
       nullification_proc_scopes_per_class_name: { 'User' => ->(query) { query.order(id: :desc) } },
     },
+    { proc_scopes: ->(klass) { nil } }, # non-effective, just testing that it'll accept it
+    { proc_scopes: ->(klass) { klass } }, # non-effective, just testing that it'll accept it
   ]
   options.each do |option_set|
     context "with options: #{option_set}" do

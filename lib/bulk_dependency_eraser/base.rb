@@ -1,12 +1,22 @@
 module BulkDependencyEraser
   class Base
+    # Default Custom Scope for all classes, no effect.
+    DEFAULT_SCOPE_WRAPPER = ->(query) { nil }
+    # Default Custom Scope for mapped-by-name classes, no effect.
+    DEFAULT_KLASS_MAPPED_SCOPE_WRAPPER = ->(query) { query }
+
     DEFAULT_OPTS = {
       # Applied to all queries. Useful for taking advantage of specific indexes
+      # - not indexed by klass name. Proc would handle the logic for that.
+      # - 3rd, and lowest, priority of scopes
+      # - accepts rails query as parameter
+      # - return nil if no applicable scope.
+      proc_scopes: self::DEFAULT_SCOPE_WRAPPER,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      # - 2nd highest priority of scopes
       proc_scopes_per_class_name: {},
     }.freeze
 
-    # Default Custom Scope for all classes, no effect.
-    DEFAULT_SCOPE_WRAPPER = ->(query) { query }
 
     # Default Database wrapper, no effect.
     DEFAULT_DB_WRAPPER = ->(block) { block.call }
@@ -27,12 +37,18 @@ module BulkDependencyEraser
 
     protected
 
-    def custom_scope_for_klass_name(klass_name)
-      if opts_c.proc_scopes_per_class_name.key?(klass_name)
-        opts_c.proc_scopes_per_class_name[klass_name]
+    def custom_scope_for_klass_name(klass)
+      if opts_c.proc_scopes_per_class_name.key?(klass.name)
+        opts_c.proc_scopes_per_class_name[klass.name]
       else
-        # No custom wrapper, return non-effect default
-        DEFAULT_SCOPE_WRAPPER
+        # See if non-class-mapped proc returns a value
+        non_class_name_mapped_query = opts_c.proc_scopes.call(klass.where({})) # convert klass to query
+        if !non_class_name_mapped_query.nil?
+          return opts_c.proc_scopes
+        else
+          # No custom wrapper, return non-effect default
+          return self.class::DEFAULT_KLASS_MAPPED_SCOPE_WRAPPER
+        end
       end
     end
 
