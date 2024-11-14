@@ -48,6 +48,15 @@ RSpec.describe BulkDependencyEraser::Manager do
       disable_nullify_batching: true,
       disable_delete_batching: true
     },
+    { reading_proc_scopes_per_class_name:       { 'User' => ->(query) { query.order(id: :desc) } } },
+    { deletion_proc_scopes_per_class_name:      { 'User' => ->(query) { query.order(id: :desc) } } },
+    { nullification_proc_scopes_per_class_name: { 'User' => ->(query) { query.order(id: :desc) } } },
+    {
+      proc_scopes_per_class_name:               { 'User' => ->(query) { query.order(id: :desc) } },
+      reading_proc_scopes_per_class_name:       { 'User' => ->(query) { query.order(id: :desc) } },
+      deletion_proc_scopes_per_class_name:      { 'User' => ->(query) { query.order(id: :desc) } },
+      nullification_proc_scopes_per_class_name: { 'User' => ->(query) { query.order(id: :desc) } },
+    },
   ]
   options.each do |option_set|
     context "with options: #{option_set}" do
@@ -813,6 +822,50 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
       end
     end
+  end
+
+  context 'has_many (custom scope)' do
+    let(:model_klass) { User }
+    let(:query) { model_klass }
+    let!(:user) { User.where(email: 'test6@test.test').first }
+    let(:opts) { { proc_scopes_per_class_name: { 'User' => ->(query) { query.limit(1).order(id: :desc) } } } }
+
+    let!(:expected_owned_vehicle_ids) { user.owned_vehicles.pluck(:id) }
+    let!(:vehicle_part_ids)   { Part.where(partable_type: 'Vehicle', partable_id: expected_owned_vehicle_ids).pluck(:id) }
+    let!(:nested_parts_a_ids) { Part.where(partable_type: 'Part', partable_id: vehicle_part_ids).pluck(:id) }
+    let!(:nested_parts_b_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_a_ids).pluck(:id) }
+    let!(:nested_parts_c_ids) { Part.where(partable_type: 'Part', partable_id: nested_parts_b_ids).pluck(:id) }
+    let!(:users_vehicle_ids)  { UsersVehicle.where(user_id: user.id).pluck(:id) }
+    let!(:owner_vehicle_ids)  { UsersVehicle.where(vehicle_id: expected_owned_vehicle_ids).pluck(:id) }
+
+    # BASELINE expected snapshot/deletion list, when deleting the 'user'
+    # Snapshot list will NOT have subclasses, only classes that correspond to a table_name
+    let!(:expected_snapshot_list) do
+      {
+        "User" => [user.id],
+      }
+    end
+    # Deletion list will have subclasses
+    let!(:expected_deletion_list) do
+      {
+        "User" => [user.id],
+      }
+    end
+    let!(:expected_nullification_list) do
+      {}
+    end
+
+    it "should execute and mirror the rails destroy" do
+      aggregate_failures do
+        expect(do_request).to be_truthy
+        expect(subject.errors).to be_empty
+      end
+
+      post_action_snapshot = compare_db_snapshot(init_db_snapshot)
+      expect(post_action_snapshot[:added]).to eq({})
+      expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+    end
+
   end
 
   context 'belongs_to' do

@@ -20,6 +20,10 @@ module BulkDependencyEraser
       read_batch_size: nil,
       # A specific read batching disable option
       disable_read_batching: nil,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      proc_scopes_per_class_name: {},
+      # Applied to deletion queries
+      reading_proc_scopes_per_class_name: {},
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -151,10 +155,20 @@ module BulkDependencyEraser
     attr_reader :table_names_to_parsed_klass_names
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
+    def custom_scope_for_klass_name(klass_name)
+      if opts_c.reading_proc_scopes_per_class_name.key?(klass_name)
+        opts_c.reading_proc_scopes_per_class_name[klass_name]
+      else
+        super(klass_name)
+      end
+    end
+
     def pluck_from_query query, column = :id
       # ordering shouldn't matter in these queries, and would slow it down
       # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
       query = query.reorder('')
+      query = custom_scope_for_klass_name(query.klass.name).call(query)
+
       query_ids = []
       read_from_db do
         # If the query has a limit, then we don't want to clobber with batching.
@@ -616,6 +630,8 @@ module BulkDependencyEraser
         )
         return
       end
+
+      query = custom_scope_for_klass_name(query.klass.name).call(query)
 
       foreign_ids_by_type = read_from_db do
         if batching_disabled? || !query.where({}).limit_value.nil?

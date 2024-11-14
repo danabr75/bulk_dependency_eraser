@@ -12,6 +12,10 @@ module BulkDependencyEraser
       delete_batch_size: nil,
       # A specific batching size for this class, overrides the batch_size
       disable_delete_batching: nil,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      proc_scopes_per_class_name: {},
+      # Applied to deletion queries
+      deletion_proc_scopes_per_class_name: {},
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -65,6 +69,14 @@ module BulkDependencyEraser
 
     attr_reader :class_names_and_ids
 
+    def custom_scope_for_klass_name(klass_name)
+      if opts_c.deletion_proc_scopes_per_class_name.key?(klass_name)
+        opts_c.deletion_proc_scopes_per_class_name[klass_name]
+      else
+        super(klass_name)
+      end
+    end
+
     def batch_size
       opts_c.delete_batch_size || opts_c.batch_size
     end
@@ -75,16 +87,19 @@ module BulkDependencyEraser
 
     def delete_by_klass_and_ids klass, ids
       puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
+      query = klass.unscoped
+      query = custom_scope_for_klass_name(klass.name).call(query)
+
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
         delete_in_db do
-          klass.unscoped.where(id: ids).delete_all
+          query.where(id: ids).delete_all
         end
       else
         puts "Deleting with batching" if opts_c.verbose
         ids.each_slice(batch_size) do |ids_subset|
           delete_in_db do
-            klass.unscoped.where(id: ids_subset).delete_all
+            query.where(id: ids_subset).delete_all
           end
         end
       end

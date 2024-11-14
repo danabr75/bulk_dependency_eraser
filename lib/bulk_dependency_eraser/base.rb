@@ -1,6 +1,12 @@
 module BulkDependencyEraser
   class Base
-    DEFAULT_OPTS = {}.freeze
+    DEFAULT_OPTS = {
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      proc_scopes_per_class_name: {},
+    }.freeze
+
+    # Default Custom Scope for all classes, no effect.
+    DEFAULT_SCOPE_WRAPPER = ->(query) { query }
 
     # Default Database wrapper, no effect.
     DEFAULT_DB_WRAPPER = ->(block) { block.call }
@@ -20,6 +26,15 @@ module BulkDependencyEraser
     end
 
     protected
+
+    def custom_scope_for_klass_name(klass_name)
+      if opts_c.proc_scopes_per_class_name.key?(klass_name)
+        opts_c.proc_scopes_per_class_name[klass_name]
+      else
+        # No custom wrapper, return non-effect default
+        DEFAULT_SCOPE_WRAPPER
+      end
+    end
 
     # Create options container
     def options_container

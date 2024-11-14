@@ -14,6 +14,10 @@ module BulkDependencyEraser
       nullify_batch_size: nil,
       # A specific batching size for this class, overrides the batch_size
       disable_nullify_batching: nil,
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      proc_scopes_per_class_name: {},
+      # Applied to deletion queries
+      nullification_proc_scopes_per_class_name: {},
     }.freeze
 
     DEFAULT_DB_WRAPPER = ->(block) do
@@ -123,6 +127,14 @@ module BulkDependencyEraser
 
     attr_reader :class_names_columns_and_ids
 
+    def custom_scope_for_klass_name(klass_name)
+      if opts_c.nullification_proc_scopes_per_class_name.key?(klass_name)
+        opts_c.nullification_proc_scopes_per_class_name[klass_name]
+      else
+        super(klass_name)
+      end
+    end
+
     def batch_size
       opts_c.nullify_batch_size || opts_c.batch_size
     end
@@ -132,8 +144,10 @@ module BulkDependencyEraser
     end
 
     def nullify_by_klass_column_and_ids klass, columns, ids
-      nullify_columns = {}
+      query = klass.unscoped
+      query = custom_scope_for_klass_name(klass.name).call(query)
 
+      nullify_columns = {}
       # supporting nullification of groups of columns simultaneously
       if columns.is_a?(Array)
         columns.each do |column|
@@ -145,12 +159,12 @@ module BulkDependencyEraser
 
       if batching_disabled?
         nullify_in_db do
-          klass.unscoped.where(id: ids).update_all(nullify_columns)
+          query.where(id: ids).update_all(nullify_columns)
         end
       else
         ids.each_slice(batch_size) do |ids_subset|
           nullify_in_db do
-            klass.unscoped.where(id: ids_subset).update_all(nullify_columns)
+            query.where(id: ids_subset).update_all(nullify_columns)
           end
         end
       end
