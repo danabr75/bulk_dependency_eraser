@@ -5,7 +5,12 @@ RSpec.describe BulkDependencyEraser::Manager do
 
   let(:model_klass) { raise 'override me!' }
   let!(:query)      { raise 'override me!' }
-  let(:params) { { query: } }
+  let(:params) do
+    p = { query: }
+    p[:opts] = opts if !opts.nil?
+    p
+  end
+  let(:opts) { nil }
   let(:do_request) { subject.execute }
   let!(:init_db_snapshot) { get_db_snapshot }
   let(:subject) { described_class.new(**params) }
@@ -27,14 +32,23 @@ RSpec.describe BulkDependencyEraser::Manager do
     { batch_size: 1 },
     { read_batch_size: 1, delete_batch_size: 1, nullify_batch_size: 1 },
     {
-      db_read_wrapper: ->(block) { block.call },
+      db_read_wrapper:    ->(block) { block.call },
       db_nullify_wrapper: ->(block) { block.call },
-      db_delete_wrapper: ->(block) { block.call },
+      db_delete_wrapper:  ->(block) { block.call },
     },
-    { query_modifier: ->(model_klass) { model_klass.limit(1_000_000)  } },
-    { query_modifier: ->(model_klass) { model_klass.limit(1)  } },
+    { query_modifier: ->(query) { query.limit(1_000_000)  } },
+    { query_modifier: ->(query) { query.limit(1)  } },
+    { disable_batching: true },
+    { disable_read_batching: true },
+    { disable_nullify_batching: true },
+    { disable_delete_batching: true },
+    {
+      disable_batching: true,
+      disable_read_batching: true,
+      disable_nullify_batching: true,
+      disable_delete_batching: true
+    },
   ]
-
   options.each do |option_set|
     context "with options: #{option_set}" do
       context 'has_many' do
@@ -47,14 +61,7 @@ RSpec.describe BulkDependencyEraser::Manager do
           q
         }
         let!(:user) { query.first }
-        
-        let(:params) do
-          if option_set
-            { query:, opts: option_set.except(:query_modifier) }
-          else
-            { query: }
-          end
-        end
+        let(:opts) { option_set.nil? ? {} : option_set.except(:query_modifier) }
 
         let!(:expected_owned_vehicle_ids) { user.owned_vehicles.pluck(:id) }
         let!(:vehicle_part_ids)   { Part.where(partable_type: 'Vehicle', partable_id: expected_owned_vehicle_ids).pluck(:id) }
@@ -1169,6 +1176,79 @@ RSpec.describe BulkDependencyEraser::Manager do
       let!(:user) { create(:user) }
       let!(:nullify_poly_profile) { create(:nullify_poly_profile, profilable: user) }
       let!(:query) { model_klass.where(id: user.id) }
+
+      let!(:expected_snapshot_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_deletion_list) do
+        {
+          "User" => [user.id],
+        }
+      end
+      let!(:expected_nullification_list) do
+        {
+          "NullifyPolyProfile" => {
+            "profilable_id" => [nullify_poly_profile.id],
+            "profilable_type" => [nullify_poly_profile.id],
+          }
+        }
+      end
+
+      it 'should have the right association dependency' do
+        expect(model_klass.reflect_on_association(:nullify_poly_profile).options[:dependent]).to eq(:nullify)
+      end
+
+      it "should destroy successfully by rails" do
+        updated_db_snapshot = get_db_snapshot
+
+        rails_destroy_all
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)
+      end
+
+      it "should execute and mirror the rails destroy" do
+        updated_db_snapshot = get_db_snapshot
+
+        aggregate_failures do
+          expect(do_request).to be_truthy
+          expect(subject.errors).to be_empty
+        end
+
+        post_action_snapshot = compare_db_snapshot(updated_db_snapshot)
+        expect(post_action_snapshot[:added]).to eq({})
+        expect(post_action_snapshot[:deleted]).to eq(expected_snapshot_list)      
+      end
+
+      it "should populate the deletion list" do
+        do_request
+
+        expect(subject.deletion_list).to eq(expected_deletion_list)
+      end
+
+      it "should populate the nullification list" do
+        do_request
+
+        expect(subject.nullification_list).to eq(expected_nullification_list)
+      end
+
+      it "should not populate the ignore_table lists" do
+        do_request
+
+        expect(subject.ignore_table_deletion_list).to eq({})
+        expect(subject.ignore_table_nullification_list).to eq({})
+      end
+    end
+
+    context 'dependency: :nullify (polymorphic, without general batching)' do
+      let(:model_klass) { User }
+      let!(:user) { create(:user) }
+      let!(:nullify_poly_profile) { create(:nullify_poly_profile, profilable: user) }
+      let!(:query) { model_klass.where(id: user.id) }
+      let(:opts) { { disable_batching: true } }
 
       let!(:expected_snapshot_list) do
         {

@@ -152,6 +152,9 @@ module BulkDependencyEraser
     attr_reader :ignore_table_name_and_dependencies, :ignore_klass_name_and_dependencies
 
     def pluck_from_query query, column = :id
+      # ordering shouldn't matter in these queries, and would slow it down
+      # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
+      query = query.reorder('')
       query_ids = []
       read_from_db do
         # If the query has a limit, then we don't want to clobber with batching.
@@ -613,11 +616,28 @@ module BulkDependencyEraser
         return
       end
 
-      # Not sure how to limit/offset batch this right now.
-      # - it's a rare use-case, let's just leave this as a TODO:
       foreign_ids_by_type = read_from_db do
-        query.pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
-          hash.key?(type) ? hash[type] << id : hash[type] = [id]
+        if batching_disabled? || !query.where({}).limit_value.nil?
+          # query without batching
+          query.reorder('').pluck(specified_foreign_key, specified_foreign_type).each_with_object({}) do |(id, type), hash|
+            hash.key?(type) ? hash[type] << id : hash[type] = [id]
+          end
+        else
+          columns_and_ids = {}
+          offset = 0
+          loop do
+            counter = 0
+            query.reorder('').offset(offset).limit(batch_size).pluck(specified_foreign_key, specified_foreign_type).each do |id, type|
+              columns_and_ids.key?(type) ? columns_and_ids[type] << id : columns_and_ids[type] = [id]
+              counter += 1
+            end
+
+            break if counter < batch_size
+
+            # Move to the next batch
+            offset += batch_size
+          end
+          columns_and_ids
         end
       end
 
