@@ -33,9 +33,10 @@ module BulkDependencyEraser
       ActiveRecord::Base.transaction do
         current_class_name = 'N/A'
         begin
-          # class names and IDs should have already been reversed in builder
-          class_names_and_ids.each do |class_name, ids|
+          # IDs should have already been reversed in builder
+          class_names_and_ids.keys.reverse.each do |class_name|
             current_class_name = class_name
+            ids = class_names_and_ids[class_name]
             klass = class_name.constantize
 
             if opts_c.enable_invalid_foreign_key_detection

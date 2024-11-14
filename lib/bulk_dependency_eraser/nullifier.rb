@@ -87,10 +87,11 @@ module BulkDependencyEraser
         current_class_name = 'N/A'
         current_column = 'N/A'
         begin
-          # class names and column_and_ids should have already been reversed in builder
-          class_names_columns_and_ids.each do |class_name, columns_and_ids|
+          # column_and_ids should have already been reversed in builder
+          class_names_columns_and_ids.keys.reverse.each do |class_name|
             current_class_name = class_name
             klass = class_name.constantize
+            columns_and_ids = class_names_columns_and_ids[class_name]
 
             columns_and_ids.each do |column, ids|
               current_column = column

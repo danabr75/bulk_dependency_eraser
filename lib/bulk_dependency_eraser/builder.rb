@@ -88,19 +88,19 @@ module BulkDependencyEraser
         end
       end
 
-      # Reverse order all Class names, and all their IDs
+      # Reverse order IDs
       # - if a class self-referenced itself the children will be deleted/nullified before parent
-      deletion_list.keys.reverse.each do |class_name|
+      deletion_list.keys.each do |class_name|
         deletion_list[class_name] = deletion_list.delete(class_name).reverse
 
         # TODO: Hard to test if not sorted
-        deletion_list[class_name] = deletion_list.delete(class_name).sort if Rails.env.test?
+        deletion_list[class_name] = deletion_list[class_name].sort if Rails.env.test?
       end
 
-      nullification_list.keys.reverse.each do |class_name|
+      nullification_list.keys.each do |class_name|
         columns_and_ids = nullification_list.delete(class_name)
         # we don't need to reverse the column keys
-        columns_and_ids.keys.each do |column_name, ids|
+        columns_and_ids.keys.each do |column_name|
           columns_and_ids[column_name] = columns_and_ids.delete(column_name).reverse
 
           # TODO: Hard to test if not sorted
