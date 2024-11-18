@@ -2,7 +2,7 @@ module BulkDependencyEraser
   class Deleter < Base
     DEFAULT_OPTS = {
       verbose: false,
-      db_delete_wrapper: self::DEFAULT_DB_WRAPPER,
+      db_delete_wrapper: self::DEFAULT_DB_WRITE_WRAPPER,
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during deletions
       enable_invalid_foreign_key_detection: false,
       disable_batching: false,
@@ -25,12 +25,6 @@ module BulkDependencyEraser
       # - 1st priority of scopes
       deletion_proc_scopes_per_class_name: {},
     }.freeze
-
-    DEFAULT_DB_WRAPPER = ->(block) do
-      ActiveRecord::Base.connected_to(role: :writing) do
-        block.call
-      end
-    end
 
     def initialize class_names_and_ids: {}, opts: {}
       @class_names_and_ids = class_names_and_ids

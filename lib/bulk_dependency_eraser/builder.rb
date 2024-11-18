@@ -7,7 +7,7 @@ module BulkDependencyEraser
       # - We would have to instantiate if we wanted to apply that scope filter.
       instantiate_if_assoc_scope_with_arity: false,
       # wraps around the DB reading
-      db_read_wrapper: self::DEFAULT_DB_WRAPPER,
+      db_read_wrapper: self::DEFAULT_DB_READ_WRAPPER,
       # Will parse these tables and their dependencies, but will remove the tables from the lists after parsing.
       ignore_tables: [],
       # Won't parse any table in this list
@@ -33,12 +33,6 @@ module BulkDependencyEraser
       # - 1st priority of scopes
       reading_proc_scopes_per_class_name: {},
     }.freeze
-
-    DEFAULT_DB_WRAPPER = ->(block) do
-      ActiveRecord::Base.connected_to(role: :reading) do
-        block.call
-      end
-    end
 
     DEPENDENCY_NULLIFY = %i[
       nullify

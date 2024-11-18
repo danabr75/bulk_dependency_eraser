@@ -5,6 +5,28 @@ module BulkDependencyEraser
     # Default Custom Scope for mapped-by-name classes, no effect.
     DEFAULT_KLASS_MAPPED_SCOPE_WRAPPER = ->(query) { query }
 
+    DEFAULT_DB_READ_WRAPPER  = ->(block) {
+      begin
+        ActiveRecord::Base.connected_to(role: :reading) do
+          block.call
+        end
+      rescue ActiveRecord::ConnectionNotEstablished
+        # No role: :reading setup, use regular connection
+        block.call
+      end
+    }
+    DEFAULT_DB_WRITE_WRAPPER = ->(block) {
+      begin
+        ActiveRecord::Base.connected_to(role: :writing) do
+          block.call
+        end
+      rescue ActiveRecord::ConnectionNotEstablished
+        # No role: :writing setup, use regular connection
+        block.call
+      end
+    }
+    DEFAULT_DB_BLANK_WRAPPER = ->(block) { block.call }
+
     DEFAULT_OPTS = {
       # Applied to all queries. Useful for taking advantage of specific indexes
       # - not indexed by klass name. Proc would handle the logic for that.
@@ -16,10 +38,6 @@ module BulkDependencyEraser
       # - 2nd highest priority of scopes
       proc_scopes_per_class_name: {},
     }.freeze
-
-
-    # Default Database wrapper, no effect.
-    DEFAULT_DB_WRAPPER = ->(block) { block.call }
 
     attr_reader :errors
 

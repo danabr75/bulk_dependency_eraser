@@ -2,7 +2,7 @@ module BulkDependencyEraser
   class Nullifier < Base
     DEFAULT_OPTS = {
       verbose: false,
-      db_nullify_wrapper: self::DEFAULT_DB_WRAPPER,
+      db_nullify_wrapper: self::DEFAULT_DB_WRITE_WRAPPER,
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during nullifications
       # - I can't think of a use-case where a nullification would generate an invalid key error
       # - Not hurting anything to leave it in, but might remove it in the future.
@@ -27,12 +27,6 @@ module BulkDependencyEraser
       # - 1st priority of scopes
       nullification_proc_scopes_per_class_name: {},
     }.freeze
-
-    DEFAULT_DB_WRAPPER = ->(block) do
-      ActiveRecord::Base.connected_to(role: :writing) do
-        block.call
-      end
-    end
 
     # @param class_names_columns_and_ids [Hash] - model names with columns to nullify pointing towards the record IDs that require the nullification.
     # - structure:
