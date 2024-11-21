@@ -1,0 +1,2 @@
+class VehicleAlsoWithNoDependent < Vehicle
+end

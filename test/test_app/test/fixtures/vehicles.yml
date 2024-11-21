@@ -26,13 +26,13 @@ vehicles_004:
 vehicles_005:
   id: 5
   model: "Civic"
-  type: "VehicleWithNoDependents"
+  type: "VehicleWithNoDependent"
   brand_id: 2
   owner_id:
 vehicles_006:
   id: 6
   model: "CRV"
-  type: "VehicleAlsoWithNoDependents"
+  type: "VehicleAlsoWithNoDependent"
   brand_id: 2
   owner_id:
 

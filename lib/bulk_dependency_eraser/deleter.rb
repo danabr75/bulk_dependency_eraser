@@ -96,13 +96,21 @@ module BulkDependencyEraser
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
         delete_in_db do
-          query.where(id: ids).delete_all
+          deletion_result = query.where(id: ids).delete_all
+          # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
+          # and have access to these objects in their proc.
+            # - query can give them access to the klass and table_name
+          [deletion_result, query, ids]
         end
       else
         puts "Deleting with batching" if opts_c.verbose
         ids.each_slice(batch_size) do |ids_subset|
           delete_in_db do
-            query.where(id: ids_subset).delete_all
+            deletion_result = query.where(id: ids_subset).delete_all
+            # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
+            # and have access to these objects in their proc.
+            # - query can give them access to the klass and table_name
+            [deletion_result, query, ids_subset]
           end
         end
       end

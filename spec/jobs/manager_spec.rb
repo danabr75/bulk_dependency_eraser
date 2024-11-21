@@ -1372,6 +1372,81 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
   end
 
+  context 'has_many (custom delete_wrapper)' do
+    let(:model_klass) { User }
+    let(:query) { model_klass }
+    before { @delete_proc_run_count = 0 }
+    let(:opts) do
+      {
+        db_delete_wrapper: lambda do |block|
+          result, query, ids = block.call
+          expect(result).to be_a(Integer)
+          # We deleted all vehicles as part of their sub-classes
+          # - None are left when we get to deleting Vehicle
+          # expect(result).to be > 0
+          expect(query).to be_a(ActiveRecord::Relation)
+          expect(ids).to be_a(Array)
+          expect(ids.count).to be > 0
+          @delete_proc_run_count += 1
+        end
+      }
+    end
+
+    it "should execute successfully" do
+      aggregate_failures do
+        expect(do_request).to be_truthy
+        expect(subject.errors).to be_empty
+        expect(@delete_proc_run_count).to eq(6)
+        expect(@delete_proc_run_count).to eq(subject.deletion_list.keys.count)
+      end 
+    end
+  end
+
+  context 'has_many (custom nullify_wrapper)' do
+    let(:model_klass) { User }
+    let!(:user) { query.order(:created_at).first }
+    let(:query) { model_klass }
+    # Necessary to have nullifiable associations
+    let!(:nullify_user_ids) do
+      query = User.where.not(id: user.id).limit(2)
+      # Update those random 2 users
+      query.update_all(last_name: user.first_name)
+      ids = query.pluck(:id)
+      # Confirm we have 2
+      expect(ids).to have_attributes(size: 2)
+      ids
+    end
+    before { @nullify_proc_run_count = 0 }
+    let(:opts) do
+      {
+        db_nullify_wrapper: lambda do |block|
+          result, query, ids, nullify_columns_query_value = block.call
+          expect(result).to be_a(Integer)
+          expect(result).to be > 0
+          expect(query).to be_a(ActiveRecord::Relation)
+          expect(ids).to be_a(Array)
+          expect(ids.count).to be > 0
+
+          expect(nullify_columns_query_value).to be_a(Hash)
+          expect(User.column_names).to include(*nullify_columns_query_value.keys)
+          expect(nullify_columns_query_value.values.flatten.uniq).to eq([nil])
+
+          @nullify_proc_run_count += 1
+        end
+      }
+    end
+
+
+    it "should execute successfully" do
+      aggregate_failures do
+        expect(do_request).to be_truthy
+        expect(subject.errors).to be_empty
+        expect(@nullify_proc_run_count).to eq(2)
+        expect(@nullify_proc_run_count).to eq(subject.nullification_list['User'].keys.count)
+      end 
+    end
+  end
+
   # TODO scope instantiation!:
   # - need to support instantiation where scopes require it.
 end

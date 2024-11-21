@@ -162,12 +162,20 @@ module BulkDependencyEraser
 
       if batching_disabled?
         nullify_in_db do
-          query.where(id: ids).update_all(nullify_columns)
+          nullification_result = query.where(id: ids).update_all(nullify_columns)
+          # Returning the following data in the event that the gem-implementer wants to insert their own db_nullify_wrapper proc
+          # and have access to these objects in their proc.
+          # - query can give them access to the klass and table_name
+          [nullification_result, query, ids, nullify_columns]
         end
       else
         ids.each_slice(batch_size) do |ids_subset|
           nullify_in_db do
-            query.where(id: ids_subset).update_all(nullify_columns)
+            nullification_result = query.where(id: ids_subset).update_all(nullify_columns)
+            # Returning the following data in the event that the gem-implementer wants to insert their own db_nullify_wrapper proc
+            # and have access to these objects in their proc.
+            # - query can give them access to the klass and table_name
+            [nullification_result, query, ids_subset, nullify_columns]
           end
         end
       end
