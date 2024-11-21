@@ -89,37 +89,36 @@ module BulkDependencyEraser
     end
 
     def execute
-      ActiveRecord::Base.transaction do
-        current_class_name = 'N/A'
-        current_column = 'N/A'
-        begin
-          # column_and_ids should have already been reversed in builder
-          class_names_columns_and_ids.keys.reverse.each do |class_name|
-            current_class_name = class_name
-            klass = class_name.constantize
-            columns_and_ids = class_names_columns_and_ids[class_name]
+      current_class_name = 'N/A'
+      current_column = 'N/A'
+      begin
+        # column_and_ids should have already been reversed in builder
+        class_names_columns_and_ids.keys.reverse.each do |class_name|
+          current_class_name = class_name
+          klass = class_name.constantize
+          columns_and_ids = class_names_columns_and_ids[class_name]
 
-            columns_and_ids.each do |column, ids|
-              current_column = column
+          columns_and_ids.each do |column, ids|
+            current_column = column
+            # Reversing IDs. Last ones in are more likely to be dependencies, and should be deleted first.
+            ids = ids.reverse
 
-              if opts_c.enable_invalid_foreign_key_detection
-                # nullify with referential integrity
+            if opts_c.enable_invalid_foreign_key_detection
+              # nullify with referential integrity
+              nullify_by_klass_column_and_ids(klass, column, ids)
+            else
+              # nullify without referential integrity
+              # Disable any ActiveRecord::InvalidForeignKey raised errors.
+              # - src: https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
+              #        https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
+              ActiveRecord::Base.connection.disable_referential_integrity do
                 nullify_by_klass_column_and_ids(klass, column, ids)
-              else
-                # nullify without referential integrity
-                # Disable any ActiveRecord::InvalidForeignKey raised errors.
-                # - src: https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
-                #        https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
-                ActiveRecord::Base.connection.disable_referential_integrity do
-                  nullify_by_klass_column_and_ids(klass, column, ids)
-                end
               end
             end
           end
-        rescue StandardError => e
-          report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
-          raise ActiveRecord::Rollback
         end
+      rescue StandardError => e
+        report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
       end
 
       return errors.none?

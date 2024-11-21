@@ -14,10 +14,7 @@ You can disable this suppression, but you may run into deletion order issues.
 - see `:enable_invalid_foreign_key_detection` option
 
 ### Rollbacks
-- We nullify, then delete, in seperate ActiveRecord transactions
-- If there are any errors in nullification, we rollback all nullifications, and do not proceed to deletion.
-- If there are any errors in deletion, we rollback all deletions, but cannot rollback nullifications.
-  - If you've enabled `enable_invalid_foreign_key_detection`, then we will rollback deletions if that error is detected.
+- In v1.X, we used to run all deletions and nullifications in their own transaction blocks, but this appears to be causing some table locking issues. No longer using transaction blocks for this reason, and can no longer support rollbacks.
 
 # Example 1:
   ```

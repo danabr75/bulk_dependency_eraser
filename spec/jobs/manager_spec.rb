@@ -12,6 +12,7 @@ RSpec.describe BulkDependencyEraser::Manager do
   end
   let(:opts) { nil }
   let(:do_request) { subject.execute }
+  let(:do_build) { subject.build }
   let!(:init_db_snapshot) { get_db_snapshot }
   let(:subject) { described_class.new(**params) }
   # some tests would be more unreadable if we enforced all association deletions.
@@ -24,6 +25,14 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
     else
       query.destroy_all
+    end
+  end
+
+  # Sort the IDs so that we can more easily compare against snapshot
+  let(:sorted_deletion_list) { subject.deletion_list.transform_values { |array| array.sort } }
+  let(:sorted_nullification_list) do
+    subject.nullification_list.transform_values do |inner_hash|
+      inner_hash.transform_values { |array| array.sort }
     end
   end
 
@@ -61,7 +70,7 @@ RSpec.describe BulkDependencyEraser::Manager do
     { proc_scopes: ->(klass) { klass } }, # non-effective, just testing that it'll accept it
   ]
   options.each do |option_set|
-    context "with options: #{option_set}" do
+    context "with options: #{option_set.nil? ? 'nil' : option_set}" do
       context 'has_many' do
         let(:model_klass) { User }
         let(:query) {
@@ -165,19 +174,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should populate the nullification list" do
-              do_request
+              do_build
 
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
 
             it "should not populate the ignore_table lists" do
-              do_request
+              do_build
 
               expect(subject.ignore_table_deletion_list).to eq({})
               expect(subject.ignore_table_nullification_list).to eq({})
@@ -206,23 +215,23 @@ RSpec.describe BulkDependencyEraser::Manager do
 
             it "should populate the deletion list" do
               suppress_stdout do
-                do_request
+                do_build
               end
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should populate the nullification list" do
               suppress_stdout do
-                do_request
+                do_build
               end
 
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
 
             it "should not populate the ignore_table lists" do
               suppress_stdout do
-                do_request
+                do_build
               end
 
               expect(subject.ignore_table_deletion_list).to eq({})
@@ -265,17 +274,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should populate the nullification list" do
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              do_build
+
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
 
             it "should populate the ignore_table lists" do
-              do_request
+              do_build
 
               expect(subject.ignore_table_deletion_list).to eq(expected_ignore_table_deletion_list)
               expect(subject.ignore_table_nullification_list).to eq({})
@@ -314,17 +325,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should populate the nullification list" do
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              do_build
+
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
 
             it "should not populate the ignore_table lists" do
-              do_request
+              do_build
 
               expect(subject.ignore_table_deletion_list).to eq({})
               expect(subject.ignore_table_nullification_list).to eq({})
@@ -363,19 +376,19 @@ RSpec.describe BulkDependencyEraser::Manager do
             end
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should populate the nullification list" do
-              do_request
+              do_build
 
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
 
             it "should populate the ignore_table lists" do
-              do_request
+              do_build
 
               expect(subject.ignore_table_deletion_list).to eq({ 'UsersVehicle' => (users_vehicle_ids.sort + owner_vehicle_ids.sort).uniq })
               expect(subject.ignore_table_nullification_list).to eq({})
@@ -428,19 +441,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
           it "should populate the deletion list" do
-            do_request
+            do_build
 
-            expect(subject.deletion_list).to eq(expected_deletion_list)
+            expect(sorted_deletion_list).to eq(expected_deletion_list)
           end
 
           it "should populate the nullification list" do
-            do_request
+            do_build
 
-            expect(subject.nullification_list).to eq(expected_nullification_list)
+            expect(sorted_nullification_list).to eq(expected_nullification_list)
           end
 
           it "should not populate the ignore_table lists" do
-            do_request
+            do_build
 
             expect(subject.ignore_table_deletion_list).to eq({})
             expect(subject.ignore_table_nullification_list).to eq({})
@@ -490,19 +503,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
           it "should populate the deletion list" do
-            do_request
+            do_build
 
-            expect(subject.deletion_list).to eq(expected_deletion_list)
+            expect(sorted_deletion_list).to eq(expected_deletion_list)
           end
 
           it "should populate the nullification list" do
-            do_request
+            do_build
 
-            expect(subject.nullification_list).to eq(expected_nullification_list)
+            expect(sorted_nullification_list).to eq(expected_nullification_list)
           end
 
           it "should not populate the ignore_table lists" do
-            do_request
+            do_build
 
             expect(subject.ignore_table_deletion_list).to eq({})
             expect(subject.ignore_table_nullification_list).to eq({})
@@ -562,15 +575,15 @@ RSpec.describe BulkDependencyEraser::Manager do
             end
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should execute the nullification list" do
               do_request
 
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
           end
         end
@@ -628,15 +641,15 @@ RSpec.describe BulkDependencyEraser::Manager do
             end
 
             it "should populate the deletion list" do
-              do_request
+              do_build
 
-              expect(subject.deletion_list).to eq(expected_deletion_list)
+              expect(sorted_deletion_list).to eq(expected_deletion_list)
             end
 
             it "should execute the nullification list" do
               do_request
 
-              expect(subject.nullification_list).to eq(expected_nullification_list)
+              expect(sorted_nullification_list).to eq(expected_nullification_list)
             end
           end
         end
@@ -690,15 +703,15 @@ RSpec.describe BulkDependencyEraser::Manager do
           end
 
           it "should populate the 'deletion_list'" do
-            do_request
+            do_build
 
-            expect(subject.deletion_list).to eq(expected_deletion_list)
+            expect(sorted_deletion_list).to eq(expected_deletion_list)
           end
 
           it "should populate the 'nullification_list'" do
-            do_request
+            do_build
 
-            expect(subject.nullification_list).to eq(expected_nullification_list)
+            expect(sorted_nullification_list).to eq(expected_nullification_list)
           end
         end
 
@@ -751,15 +764,15 @@ RSpec.describe BulkDependencyEraser::Manager do
           end
 
           it "should populate the 'deletion_list'" do
-            do_request
+            do_build
 
-            expect(subject.deletion_list).to eq(expected_deletion_list)
+            expect(sorted_deletion_list).to eq(expected_deletion_list)
           end
 
           it "should populate the 'nullification_list'" do
-            do_request
+            do_build
 
-            expect(subject.nullification_list).to eq(expected_nullification_list)
+            expect(sorted_nullification_list).to eq(expected_nullification_list)
           end
         end
 
@@ -811,15 +824,15 @@ RSpec.describe BulkDependencyEraser::Manager do
           end
 
           it "should populate the 'deletion_list'" do
-            do_request
+            do_build
 
-            expect(subject.deletion_list).to eq(expected_deletion_list)
+            expect(sorted_deletion_list).to eq(expected_deletion_list)
           end
 
           it "should populate the 'nullification_list'" do
-            do_request
+            do_build
 
-            expect(subject.nullification_list).to eq(expected_nullification_list)
+            expect(sorted_nullification_list).to eq(expected_nullification_list)
           end
         end
       end
@@ -924,19 +937,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1000,19 +1013,19 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1069,19 +1082,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1140,19 +1153,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1207,19 +1220,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1279,19 +1292,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
@@ -1352,19 +1365,19 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
 
       it "should populate the deletion list" do
-        do_request
+        do_build
 
-        expect(subject.deletion_list).to eq(expected_deletion_list)
+        expect(sorted_deletion_list).to eq(expected_deletion_list)
       end
 
       it "should populate the nullification list" do
-        do_request
+        do_build
 
-        expect(subject.nullification_list).to eq(expected_nullification_list)
+        expect(sorted_nullification_list).to eq(expected_nullification_list)
       end
 
       it "should not populate the ignore_table lists" do
-        do_request
+        do_build
 
         expect(subject.ignore_table_deletion_list).to eq({})
         expect(subject.ignore_table_nullification_list).to eq({})
