@@ -1,7 +1,29 @@
 module BulkDependencyEraser
   class Nullifier < Base
+    DEFAULT_DB_NULLIFY_ALL_WRAPPER = lambda do |block|
+      begin
+        block.call
+      rescue StandardError => e
+        report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
+      end
+    end
+
     DEFAULT_OPTS = {
       verbose: false,
+      # Runs once, all deletions occur within it
+      # - useful if you wanted to implement a rollback:
+      #   - i.e:
+      #     db_nullify_all_wrapper: lambda do |block|
+      #       ActiveRecord::Base.transaction do
+      #         begin
+      #           block.call
+      #         rescue StandardError => e
+      #           report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
+      #           raise ActiveRecord::Rollback
+      #         end
+      #       end
+      #     end
+      db_nullify_all_wrapper: self::DEFAULT_DB_NULLIFY_ALL_WRAPPER,
       db_nullify_wrapper: self::DEFAULT_DB_WRITE_WRAPPER,
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during nullifications
       # - I can't think of a use-case where a nullification would generate an invalid key error
@@ -91,7 +113,7 @@ module BulkDependencyEraser
     def execute
       current_class_name = 'N/A'
       current_column = 'N/A'
-      begin
+      nullify_all_in_db do
         # column_and_ids should have already been reversed in builder
         class_names_columns_and_ids.keys.reverse.each do |class_name|
           current_class_name = class_name
@@ -117,8 +139,6 @@ module BulkDependencyEraser
             end
           end
         end
-      rescue StandardError => e
-        report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
       end
 
       return errors.none?
@@ -145,6 +165,9 @@ module BulkDependencyEraser
       opts_c.disable_nullify_batching.nil? ? opts_c.disable_batching : opts_c.disable_nullify_batching
     end
 
+    # @param klass   [ActiveRecord::Base]
+    # @param columns [Symbol | String | Array<String | Symbol>]
+    # @param ids     [Array[String | Integer]]
     def nullify_by_klass_column_and_ids klass, columns, ids
       query = klass.unscoped
       query = custom_scope_for_query(query)
@@ -183,6 +206,13 @@ module BulkDependencyEraser
     def nullify_in_db(&block)
       puts "Nullifying from DB..." if opts_c.verbose
       opts_c.db_nullify_wrapper.call(block)
+      puts "Nullifying from DB complete." if opts_c.verbose
+    end
+
+    def nullify_all_in_db(&block)
+      puts "Nullifying all from DB..." if opts_c.verbose
+      opts_c.db_nullify_all_wrapper.call(block)
+      puts "Nullifying all from DB complete." if opts_c.verbose
     end
 
   end

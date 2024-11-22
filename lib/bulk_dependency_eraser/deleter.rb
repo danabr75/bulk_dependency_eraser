@@ -1,7 +1,29 @@
 module BulkDependencyEraser
   class Deleter < Base
+    DEFAULT_DB_DELETE_ALL_WRAPPER = ->(block) do
+      begin
+        block.call
+      rescue StandardError => e
+        report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+      end
+    end
+
     DEFAULT_OPTS = {
       verbose: false,
+      # Runs once, all deletions occur within it
+      # - useful if you wanted to implement a rollback:
+      #   - i.e:
+          # db_delete_all_wrapper: lambda do |block|
+          #   ActiveRecord::Base.transaction do
+          #     begin
+          #       block.call
+          #     rescue StandardError => e
+          #       report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+          #       raise ActiveRecord::Rollback
+          #     end
+          #   end
+          # end
+      db_delete_all_wrapper: self::DEFAULT_DB_DELETE_ALL_WRAPPER,
       db_delete_wrapper: self::DEFAULT_DB_WRITE_WRAPPER,
       # Set to true if you want 'ActiveRecord::InvalidForeignKey' errors raised during deletions
       enable_invalid_foreign_key_detection: false,
@@ -37,8 +59,7 @@ module BulkDependencyEraser
       end
 
       current_class_name = 'N/A'
-      begin
-        # IDs should have already been reversed in builder
+      delete_all_in_db do
         class_names_and_ids.keys.reverse.each do |class_name|
           current_class_name = class_name
           ids = class_names_and_ids[class_name].reverse
@@ -57,8 +78,6 @@ module BulkDependencyEraser
             end
           end
         end
-      rescue StandardError => e
-        report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
       end
 
       return errors.none?
@@ -116,6 +135,13 @@ module BulkDependencyEraser
     def delete_in_db(&block)
       puts "Deleting from DB..." if opts_c.verbose
       opts_c.db_delete_wrapper.call(block)
+      puts "Deleting from DB complete." if opts_c.verbose
+    end
+
+    def delete_all_in_db(&block)
+      puts "Deleting all from DB..." if opts_c.verbose
+      opts_c.db_delete_all_wrapper.call(block)
+      puts "Deleting all from DB complete." if opts_c.verbose
     end
   end
 end

@@ -36,6 +36,8 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
   end
 
+  # List of options that we can check that won't effect the rspec expectations
+  # - any options that would change the results have to be checked in their own custom rspec contexts
   options = [
     nil,
     { batch_size: 1 },
@@ -68,6 +70,28 @@ RSpec.describe BulkDependencyEraser::Manager do
     },
     { proc_scopes: ->(klass) { nil } }, # non-effective, just testing that it'll accept it
     { proc_scopes: ->(klass) { klass } }, # non-effective, just testing that it'll accept it
+    {
+      db_delete_all_wrapper: ->(block) {
+        ActiveRecord::Base.transaction do
+          begin
+            block.call # execute deletions
+          rescue StandardError => e
+            report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+            raise ActiveRecord::Rollback
+          end
+        end
+      },
+      db_nullify_all_wrapper: ->(block) {
+        ActiveRecord::Base.transaction do
+          begin
+            block.call # execute nullifications
+          rescue StandardError => e
+            report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
+            raise ActiveRecord::Rollback
+          end
+        end
+      }
+    },
   ]
   options.each do |option_set|
     context "with options: #{option_set.nil? ? 'nil' : option_set}" do

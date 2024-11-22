@@ -15,6 +15,32 @@ You can disable this suppression, but you may run into deletion order issues.
 
 ### Rollbacks
 - In v1.X, we used to run all deletions and nullifications in their own transaction blocks, but this appears to be causing some table locking issues. No longer using transaction blocks for this reason, and can no longer support rollbacks.
+- You can still enable rollbacks if you want by passing in these two wrapper options.
+```
+opts: {
+  db_delete_all_wrapper: ->(block) {
+    ActiveRecord::Base.transaction do
+      begin
+        block.call # execute deletions
+      rescue StandardError => e
+        report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+        raise ActiveRecord::Rollback
+      end
+    end
+  },
+  db_nullify_all_wrapper: ->(block) {
+    ActiveRecord::Base.transaction do
+      begin
+        block.call # execute nullifications
+      rescue StandardError => e
+        report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
+        raise ActiveRecord::Rollback
+      end
+    end
+  }
+}
+BulkDependencyEraser::Manager.new(query: User.where(id: [...]), opts:).execute
+```
 
 # Example 1:
   ```
