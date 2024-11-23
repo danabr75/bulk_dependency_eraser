@@ -22,6 +22,11 @@ class User < ApplicationRecord
     active.where.not(first_name: ['', nil])
   }, class_name: 'User', foreign_key: :last_name, primary_key: :first_name, dependent: :nullify
 
+  has_many :user_is_friends_withs, dependent: :destroy
+  has_many :friends, through: :user_is_friends_withs, source: :friends_with
+
+  has_many :user_is_friended_by, foreign_key: :friends_with_id, class_name: 'UserIsFriendsWith', dependent: :destroy
+  has_many :is_considered_friend_by, through: :user_is_friended_by, source: :user
 
   scope :active, -> { where(active: true) }
 

@@ -1,5 +1,11 @@
+require_relative 'utils'
+
 module BulkDependencyEraser
   class Base
+    POLY_KLASS_NAME = "<POLY>"
+    include BulkDependencyEraser::Utils
+    extend BulkDependencyEraser::Utils
+
     # Default Custom Scope for all classes, no effect.
     DEFAULT_SCOPE_WRAPPER = ->(query) { nil }
     # Default Custom Scope for mapped-by-name classes, no effect.
@@ -39,6 +45,32 @@ module BulkDependencyEraser
       proc_scopes_per_class_name: {},
     }.freeze
 
+    DEPENDENCY_NULLIFY = %i[
+      nullify
+    ].freeze
+
+    # Abort deletion if assoc dependency value is any of these.
+    # - exception if the :force_destroy_restricted option set true
+    DEPENDENCY_RESTRICT = %i[
+      restrict_with_error
+      restrict_with_exception
+    ].freeze
+
+    DEPENDENCY_DESTROY = (
+      %i[
+        destroy
+        delete_all
+        destroy_async
+      ] + self::DEPENDENCY_RESTRICT
+    ).freeze
+
+    DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES = [
+      # Rails 6.1, when a has_and_delongs_to_many <assoc>, dependent: :destroy,
+      # will ignore the destroy. Will neither destroy the join table record nor the association record
+      # We will do the same, mirror the fuctionality, by ignoring any :dependent options on these types.
+      'ActiveRecord::Reflection::HasAndBelongsToManyReflection'
+    ].freeze
+
     attr_reader :errors
 
     def initialize opts: {}
@@ -54,6 +86,17 @@ module BulkDependencyEraser
     end
 
     protected
+
+    # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
+    def find_root_association_from_through_assocs klass, association_name
+      reflection = klass.reflect_on_association(association_name)
+      options = reflection.options
+      if options.key?(:through)
+        return find_root_association_from_through_assocs(klass, options[:through])
+      else
+        association_name
+      end
+    end
 
     def custom_scope_for_query(query)
       klass = query.klass

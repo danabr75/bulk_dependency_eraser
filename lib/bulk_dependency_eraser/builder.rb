@@ -34,32 +34,6 @@ module BulkDependencyEraser
       reading_proc_scopes_per_class_name: {},
     }.freeze
 
-    DEPENDENCY_NULLIFY = %i[
-      nullify
-    ].freeze
-
-    # Abort deletion if assoc dependency value is any of these.
-    # - exception if the :force_destroy_restricted option set true
-    DEPENDENCY_RESTRICT = %i[
-      restrict_with_error
-      restrict_with_exception
-    ].freeze
-
-    DEPENDENCY_DESTROY = (
-      %i[
-        destroy
-        delete_all
-        destroy_async
-      ] + self::DEPENDENCY_RESTRICT
-    ).freeze
-
-    DEPENDENCY_DESTROY_IGNORE_REFLECTION_TYPES = [
-      # Rails 6.1, when a has_and_delongs_to_many <assoc>, dependent: :destroy,
-      # will ignore the destroy. Will neither destroy the join table record nor the association record
-      # We will do the same, mirror the fuctionality, by ignoring any :dependent options on these types.
-      'ActiveRecord::Reflection::HasAndBelongsToManyReflection'
-    ].freeze
-
     # write access so that these can be edited in-place by end-users who might need to manually adjust deletion order.
     attr_accessor :deletion_list, :nullification_list
     attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
@@ -656,17 +630,6 @@ module BulkDependencyEraser
         end
       else
         raise "invalid parsing type: #{type}"
-      end
-    end
-
-    # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
-    def find_root_association_from_through_assocs klass, association_name
-      reflection = klass.reflect_on_association(association_name)
-      options = reflection.options
-      if options.key?(:through)
-        return find_root_association_from_through_assocs(klass, options[:through])
-      else
-        association_name
       end
     end
 

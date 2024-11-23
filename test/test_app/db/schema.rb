@@ -12,6 +12,13 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
     t.boolean "active"
   end
 
+  create_table "user_is_friends_withs", id: :integer, force: :cascade do |t|
+    t.bigint "user_id"
+    t.bigint "friends_with_id"
+    t.index ["user_id", "friends_with_id"], name: "index_user_friends_with"
+    t.index ["friends_with_id", "user_id"], name: "index_friend_with_has_users"
+  end
+
   create_table "registrations", id: :integer, force: :cascade do |t|
     t.boolean "active"
     t.bigint "registerable_id"
