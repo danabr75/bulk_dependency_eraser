@@ -9,6 +9,7 @@ module BulkDependencyEraser
 
     delegate :nullification_list, :deletion_list, to: :dependency_builder
     delegate :ignore_table_deletion_list, :ignore_table_nullification_list, to: :dependency_builder
+    delegate :circular_dependency_klasses, :flat_dependencies_per_klass, to: :dependency_builder
 
     # @param query [ActiveRecord::Base | ActiveRecord::Relation]
     def initialize query:, opts: {}

@@ -1,6 +1,6 @@
 module BulkDependencyEraser
   class Deleter < Base
-    DEFAULT_DB_DELETE_ALL_WRAPPER = ->(block) do
+    DEFAULT_DB_DELETE_ALL_WRAPPER = ->(deleter, block) do
       begin
         block.call
       rescue StandardError => e
@@ -63,7 +63,7 @@ module BulkDependencyEraser
         class_names_and_ids.keys.reverse.each do |class_name|
           current_class_name = class_name
           ids = class_names_and_ids[class_name].reverse
-          klass = class_name.constantize
+          klass = constantize(class_name)
 
           if opts_c.enable_invalid_foreign_key_detection
             # delete with referential integrity
@@ -140,7 +140,7 @@ module BulkDependencyEraser
 
     def delete_all_in_db(&block)
       puts "Deleting all from DB..." if opts_c.verbose
-      opts_c.db_delete_all_wrapper.call(block)
+      opts_c.db_delete_all_wrapper.call(self, block)
       puts "Deleting all from DB complete." if opts_c.verbose
     end
   end

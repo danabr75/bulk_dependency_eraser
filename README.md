@@ -18,22 +18,22 @@ You can disable this suppression, but you may run into deletion order issues.
 - You can still enable rollbacks if you want by passing in these two wrapper options.
 ```
 opts: {
-  db_delete_all_wrapper: ->(block) {
+  db_delete_all_wrapper: ->(deleter, block) {
     ActiveRecord::Base.transaction do
       begin
         block.call # execute deletions
       rescue StandardError => e
-        report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+        deleter.report_error("Issue attempting to delete: #{e.class.name} - #{e.message}")
         raise ActiveRecord::Rollback
       end
     end
   },
-  db_nullify_all_wrapper: ->(block) {
+  db_nullify_all_wrapper: ->(nullifier, block) {
     ActiveRecord::Base.transaction do
       begin
         block.call # execute nullifications
       rescue StandardError => e
-        report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
+        nullifier.report_error("Issue attempting to nullify: #{e.class.name} - #{e.message}")
         raise ActiveRecord::Rollback
       end
     end

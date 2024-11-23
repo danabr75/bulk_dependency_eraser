@@ -71,22 +71,22 @@ RSpec.describe BulkDependencyEraser::Manager do
     { proc_scopes: ->(klass) { nil } }, # non-effective, just testing that it'll accept it
     { proc_scopes: ->(klass) { klass } }, # non-effective, just testing that it'll accept it
     {
-      db_delete_all_wrapper: ->(block) {
+      db_delete_all_wrapper: ->(deleter, block) {
         ActiveRecord::Base.transaction do
           begin
             block.call # execute deletions
           rescue StandardError => e
-            report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+            deleter.report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
             raise ActiveRecord::Rollback
           end
         end
       },
-      db_nullify_all_wrapper: ->(block) {
+      db_nullify_all_wrapper: ->(nullifier, block) {
         ActiveRecord::Base.transaction do
           begin
             block.call # execute nullifications
           rescue StandardError => e
-            report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
+            nullifier.report_error("Issue attempting to nullify '#{current_class_name}': #{e.class.name} - #{e.message}")
             raise ActiveRecord::Rollback
           end
         end
@@ -132,9 +132,12 @@ RSpec.describe BulkDependencyEraser::Manager do
             # - we go by class, not table_names
             "Car" => user.owned_cars.pluck(:id).sort,
             "Motorcycle" => user.owned_motorcycles.pluck(:id).sort,
-
-            "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
-            "User" => [user.id],
+            # "Part" => (vehicle_part_ids + nested_parts_a_ids + nested_parts_b_ids + nested_parts_c_ids).sort,
+            "Part.0" => vehicle_part_ids,
+            "Part.1" => nested_parts_a_ids,
+            "Part.2" => nested_parts_b_ids,
+            "Part.3" => nested_parts_c_ids,
+            "User.0" => [user.id],
             "UsersVehicle" => (users_vehicle_ids + owner_vehicle_ids).uniq.sort,
             "Vehicle" => expected_owned_vehicle_ids.sort,
           }
@@ -331,7 +334,7 @@ RSpec.describe BulkDependencyEraser::Manager do
               snapshot.delete('Car')
               snapshot.delete('Motorcycle')
               snapshot.delete('Vehicle')
-              snapshot.delete('Part')
+              snapshot.keys.each { |key| snapshot.delete(key) if key.starts_with?('Part.') }
               snapshot["UsersVehicle"] = users_vehicle_ids.sort
               snapshot
             end
@@ -430,7 +433,7 @@ RSpec.describe BulkDependencyEraser::Manager do
           end
           let!(:expected_deletion_list) do
             snapshot = super()
-            snapshot = snapshot.to_a.insert(0, ['Registration', registration_ids]).to_h
+            snapshot = snapshot.to_a.insert(0, ['Registration.0', registration_ids]).to_h
             snapshot
           end
 
@@ -887,7 +890,7 @@ RSpec.describe BulkDependencyEraser::Manager do
     # Deletion list will have subclasses
     let!(:expected_deletion_list) do
       {
-        "User" => [user.id],
+        "User.0" => [user.id],
       }
     end
     let!(:expected_nullification_list) do
@@ -925,7 +928,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
       let(:expected_deletion_list) do
         {
-          "User" => [user.id].sort,
+          "User.0" => [user.id].sort,
           "Address" => [address.id].sort,
         }
       end
@@ -1001,9 +1004,9 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
       let!(:expected_deletion_list) do
         {
-          "User" => [user.id],
+          "User.0" => [user.id],
           "Vehicle" => [vehicle.id],
-          "Registration" => expected_registration_ids,
+          "Registration.0" => expected_registration_ids,
         }
       end
       let!(:expected_nullification_list) { {} }
@@ -1073,7 +1076,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       let!(:expected_deletion_list) do
         {
           "Profile" => [profile.id],
-          "User" => [user.id],
+          "User.0" => [user.id],
         }
       end
       let!(:expected_nullification_list) { {} }
@@ -1138,7 +1141,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
       let!(:expected_deletion_list) do
         {
-          "User" => [user.id],
+          "User.0" => [user.id],
         }
       end
       let!(:expected_nullification_list) do
@@ -1211,7 +1214,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       let!(:expected_deletion_list) do
         {
           "PolyProfile" => [poly_profile.id],
-          "User" => [user.id],
+          "User.0" => [user.id],
         }
       end
       let!(:expected_nullification_list) { {} }
@@ -1276,7 +1279,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
       let!(:expected_deletion_list) do
         {
-          "User" => [user.id],
+          "User.0" => [user.id],
         }
       end
       let!(:expected_nullification_list) do
@@ -1349,7 +1352,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       end
       let!(:expected_deletion_list) do
         {
-          "User" => [user.id],
+          "User.0" => [user.id],
         }
       end
       let!(:expected_nullification_list) do
@@ -1433,7 +1436,7 @@ RSpec.describe BulkDependencyEraser::Manager do
       aggregate_failures do
         expect(do_request).to be_truthy
         expect(subject.errors).to be_empty
-        expect(@delete_proc_run_count).to eq(6)
+        expect(@delete_proc_run_count).to eq(9)
         expect(@delete_proc_run_count).to eq(subject.deletion_list.keys.count)
       end 
     end

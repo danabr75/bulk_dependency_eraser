@@ -21,13 +21,18 @@ module BulkDependencyEraser
     def initialize(opts: {})
       # @flat_dependencies_per_klass Structure
       # {
-      #   <ActiveRecord::Base> => {
-      #     nullify_dependencies: {
-      #       <association_name>: <ActiveRecord::Base>,
+      #   <class_name> => {
+      #     has_dependencies: <Boolean>,
+      #     foreign_keys: {
+      #       <column_name>: <association_class_name>,
       #       ...
-      #     }
+      #     },
+      #     nullify_dependencies: {
+      #       <association_name>: <association_class_name>,
+      #       ...
+      #     },
       #     destroy_dependencies: {
-      #       <association_name>: <ActiveRecord::Base>,
+      #       <association_name>: <association_class_name>,
       #       ...
       #     }
       #   }

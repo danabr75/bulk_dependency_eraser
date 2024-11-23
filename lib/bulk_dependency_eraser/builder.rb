@@ -37,6 +37,9 @@ module BulkDependencyEraser
     # write access so that these can be edited in-place by end-users who might need to manually adjust deletion order.
     attr_accessor :deletion_list, :nullification_list
     attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
+    attr_reader :query_schema_parser
+
+    delegate :circular_dependency_klasses, :flat_dependencies_per_klass, to: :query_schema_parser
 
     def initialize query:, opts: {}
       @query = query
@@ -53,9 +56,15 @@ module BulkDependencyEraser
 
       @ignore_table_name_and_dependencies = opts_c.ignore_tables_and_dependencies.collect { |table_name| table_name }
       @ignore_klass_name_and_dependencies = opts_c.ignore_klass_names_and_dependencies.collect { |klass_name| klass_name }
+      @query_schema_parser = BulkDependencyEraser::QuerySchemaParser.new(query:, opts:)
     end
 
     def execute
+      unless query_schema_parser.execute
+        merge_errors(full_schema_parser.errors, 'QuerySchemaParser: ')
+        return false
+      end
+
       # go through deletion/nullification lists and remove any tables from 'ignore_tables' option
       build_result = build
 
@@ -63,8 +72,9 @@ module BulkDependencyEraser
       # - prior approach was to use table_name.classify, but we can't trust that approach.
       opts_c.ignore_tables.each do |table_name|
         table_names_to_parsed_klass_names.dig(table_name)&.each do |klass_name|
-          ignore_table_deletion_list[klass_name]      = deletion_list.delete(klass_name)      if deletion_list.key?(klass_name)
-          ignore_table_nullification_list[klass_name] = nullification_list.delete(klass_name) if nullification_list.key?(klass_name)
+          klass_index = deletion_index_key(klass_name.constantize)
+          ignore_table_deletion_list[klass_index]      = deletion_list.delete(klass_index)      if deletion_list.key?(klass_index)
+          ignore_table_nullification_list[klass_index] = nullification_list.delete(klass_index) if nullification_list.key?(klass_index)
         end
       end
 
@@ -85,15 +95,13 @@ module BulkDependencyEraser
       rescue StandardError => e
         if @query.is_a?(ActiveRecord::Relation)
           klass      = @query.klass
-          klass_name = @query.klass.name
         else
           # current_query is a normal rails class
           klass      = @query
-          klass_name = @query.name
         end
         report_error(
           "
-            Error Encountered in 'execute' for '#{klass_name}':
+            Error Encountered in 'execute' for '#{klass.name}':
               #{e.class.name}
               #{e.message}
           "
@@ -164,17 +172,15 @@ module BulkDependencyEraser
 
       if query.is_a?(ActiveRecord::Relation)
         klass      = query.klass
-        klass_name = query.klass.name
       else
         # current_query is a normal rails class
         klass      = query
-        klass_name = query.name
       end
 
       table_names_to_parsed_klass_names[klass.table_name] ||= []
       # Need to populate this list here, so we can have access to it later for the :ignore_tables option
-      unless table_names_to_parsed_klass_names[klass.table_name].include?(klass_name)
-        table_names_to_parsed_klass_names[klass.table_name] << klass_name
+      unless table_names_to_parsed_klass_names[klass.table_name].include?(klass.name)
+        table_names_to_parsed_klass_names[klass.table_name] << klass.name
       end
 
       if ignore_table_name_and_dependencies.include?(klass.table_name)
@@ -182,22 +188,22 @@ module BulkDependencyEraser
         return
       end
 
-      if ignore_klass_name_and_dependencies.include?(klass_name)
+      if ignore_klass_name_and_dependencies.include?(klass.name)
         # Not parsing, table and dependencies ignorable
         return
       end
 
       if opts_c.verbose
         if association_parent
-          puts "Building #{association_parent}, association of #{klass_name}"
+          puts "Building #{association_parent}, association of #{klass.name}"
         else
-          puts "Building #{klass_name}"
+          puts "Building #{klass.name}"
         end
       end
 
       if klass.primary_key != 'id'
         report_error(
-          "#{klass_name} - does not use primary_key 'id'. Cannot use this tool to bulk delete."
+          "#{klass.name} - does not use primary_key 'id'. Cannot use this tool to bulk delete."
         )
         return
       end
@@ -205,26 +211,22 @@ module BulkDependencyEraser
       # Pluck IDs of the current query
       query_ids = pluck_from_query(query)
 
-      deletion_list[klass_name] ||= []
+      klass_index = initialize_deletion_list_for_klass(klass)
 
       # prevent infinite recursion here.
       # - Remove any IDs that have been processed before
-      query_ids = query_ids - deletion_list[klass_name]
+      query_ids = remove_already_deletion_processed_ids(klass, query_ids)
 
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
         # quick cleanup, if turns out was an empty class
-        deletion_list.delete(klass_name) if deletion_list[klass_name].none?
+        deletion_list.delete(klass_index) if deletion_list[klass_index].none?
         return
       end
 
       # Use-case: We have more IDs to process
       # - can now safely add to the list, since we've prevented infinite recursion
-      deletion_list[klass_name] += query_ids
-
-      # Hard to test if not sorted
-      # - if we had more advanced rspec matches, we could do away with this.
-      # deletion_list[klass_name].sort! if Rails.env.test?
+      deletion_list[klass_index] += query_ids
 
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
@@ -420,15 +422,12 @@ module BulkDependencyEraser
         nullification_list[assoc_klass_name][specified_foreign_key] += assoc_ids
         nullification_list[assoc_klass_name][specified_foreign_key].uniq!
 
-        # nullification_list[assoc_klass_name][specified_foreign_key].sort! if Rails.env.test?
 
         # Also nullify the 'type' field, if the association is polymorphic
         if specified_foreign_type
           nullification_list[assoc_klass_name][specified_foreign_type] ||= []
           nullification_list[assoc_klass_name][specified_foreign_type] += assoc_ids
           nullification_list[assoc_klass_name][specified_foreign_type].uniq!
-
-          # nullification_list[assoc_klass_name][specified_foreign_type].sort! if Rails.env.test?
         end
       else
         raise "invalid parsing type: #{type}"
@@ -673,6 +672,72 @@ module BulkDependencyEraser
     def read_from_db(&block)
       puts "Reading from DB..." if opts_c.verbose
       opts_c.db_read_wrapper.call(block)
+    end
+
+    def remove_already_deletion_processed_ids(klass, new_ids)
+      already_processed_ids = []
+
+      if is_a_circular_dependency_klass?(klass)
+        klass_keys = find_circular_dependency_deletion_keys(klass)
+        klass_keys.each do |circular_class_key|
+          already_processed_ids += deletion_list[circular_class_key]
+        end
+      else
+        already_processed_ids = deletion_list[klass.name]
+      end
+
+      new_ids - already_processed_ids
+    end
+
+    # Initializes deletion_list index
+    # - increments the index for circular dependencies
+    def initialize_deletion_list_for_klass(klass)
+      klass_index = deletion_index_key(klass, increment_circular_index: true)
+
+      if is_a_circular_dependency_klass?(klass)
+        raise "circular_index already existed for klass: #{klass.name}" if deletion_list.key?(klass_index)
+
+        deletion_list[klass_index] = []
+      else
+        # Not a circular dependency, define as normal
+        deletion_list[klass_index] ||= []
+      end
+
+      klass_index
+    end
+
+    def is_a_circular_dependency_klass?(klass)
+      circular_dependency_klasses.values.flatten.include?(klass.name)
+    end
+
+    def find_circular_dependency_deletion_keys(klass)
+      escaped_prefix = Regexp.escape(klass.name)
+      # Define the key-matching regex: klass.name + '.' + <integer>
+      regex = /^#{escaped_prefix}\.\d+$/
+      # find the latest, indexed klass initialization
+      deletion_list.keys.select { |key| key.match?(regex) }
+    end
+
+    # If circular dependency, append a index suffix to the deletion hash key
+    # - they will be deleted in highest index to lowest index order.
+    def deletion_index_key(klass, increment_circular_index: false)
+      if is_a_circular_dependency_klass?(klass)
+        klass_keys = find_circular_dependency_deletion_keys(klass)
+        if klass_keys.none?
+          klass_index = "#{klass.name}.0" # first one, no need to consider increment
+        else
+          # Use map to extract the integers using a regular expression
+          circular_indexes = klass_keys.map { |s| s[/\.(\d+)$/, 1].to_i }
+          # Find the maximum value
+          current_circular_index = circular_indexes.max
+          current_circular_index += 1 if increment_circular_index
+          klass_index = "#{klass.name}.#{current_circular_index}"
+        end
+      else
+        klass_index = klass.name
+      end
+
+      return klass_index
     end
   end
 end

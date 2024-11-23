@@ -1,10 +1,10 @@
 module BulkDependencyEraser
   class Nullifier < Base
-    DEFAULT_DB_NULLIFY_ALL_WRAPPER = lambda do |block|
+    DEFAULT_DB_NULLIFY_ALL_WRAPPER = ->(nullifier, block) do
       begin
         block.call
       rescue StandardError => e
-        report_error("Issue attempting to nullify '#{current_class_name}' column '#{current_column}': #{e.class.name} - #{e.message}")
+        nullifier.report_error("Issue attempting to nullify: #{e.class.name} - #{e.message}")
       end
     end
 
@@ -211,7 +211,7 @@ module BulkDependencyEraser
 
     def nullify_all_in_db(&block)
       puts "Nullifying all from DB..." if opts_c.verbose
-      opts_c.db_nullify_all_wrapper.call(block)
+      opts_c.db_nullify_all_wrapper.call(self, block)
       puts "Nullifying all from DB complete." if opts_c.verbose
     end
 

@@ -62,10 +62,6 @@ module BulkDependencyEraser
     # - if was a dependency from a polymophic class, then iterate through the klasses.
     # @param dependency_path [Array<ActiveRecord::Base>] - previously parsed klasses
     def klass_dependencies_parser klass, klass_action:, dependency_path: []
-      puts "KLASS #{klass.name}"
-      puts klass_action.inspect
-      puts dependency_path.inspect
-      puts ""
       if klass.is_a?(Array)
         klass.each do |klass_subset|
           klass_dependencies_parser(klass_subset, klass_action:, dependency_path:)
@@ -90,7 +86,6 @@ module BulkDependencyEraser
       return if DEPENDENCY_NULLIFY.include?(klass_action)
 
       # already parsed, doesn't need to be parsed again.
-      puts "RETURNING EARLY, arleady parsed" if dependencies_per_klass.include?(klass.name)
       return if dependencies_per_klass.include?(klass.name)
 
       @dependencies_per_klass[klass.name] = []
@@ -109,43 +104,36 @@ module BulkDependencyEraser
       # Iterate through the assoc names, if there are any :through assocs, then rename the association
       # - Rails interpretation of any dependencies of a :through association is to apply it to
       #   the leaf association at the end of the :through chain(s)
-      destroy_association_names = destroy_associations.map(&:name).collect do |assoc_name|
-        find_root_association_from_through_assocs(klass, assoc_name)
-      end
-      nullify_association_names = nullify_associations.map(&:name).collect do |assoc_name|
-        find_root_association_from_through_assocs(klass, assoc_name)
-      end
-
-      puts "DESTROYABLES"
-      puts destroy_association_names.uniq.inspect
-      puts ""
-
-      destroy_association_names.uniq.each do |association_name|
-        association_parser(klass, association_name, dependency_path)
+      association_dependencies = {}
+      (
+        destroy_associations.map(&:name) +
+        nullify_associations.map(&:name)
+      ).collect do |assoc_name|
+        root_association_name = find_root_association_from_through_assocs(klass, assoc_name)
+        association_dependencies[root_association_name] = klass.reflect_on_association(assoc_name).options.dig(:dependent)
       end
 
-      nullify_association_names.uniq.each do |association_name|
-        association_parser(klass, association_name, dependency_path)
+      # Using association names as keys helps remove duplicates - from dependent options on through associations and root associations.
+      association_dependencies.each do |association_name, dependency_type|
+        association_parser(klass, association_name, dependency_type, dependency_path)
       end
     end
 
     # Used to iterate through each destroyable association, and recursively call 'deletion_query_parser'.
     # @param parent_class     [ApplicationRecord]
     # @param association_name [Symbol]                - The association name from the parent_class
-    def association_parser(parent_class, association_name, dependency_path)
+    def association_parser(parent_class, association_name, dependency_type, dependency_path)
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
-      dependency_type = reflection.options.dig(:dependent)
+
+      raise "No dependency set for #{parent_class} and it's association: #{association_name}" unless dependency_type
 
       case reflection_type
       when 'ActiveRecord::Reflection::HasManyReflection'
-        puts "HAS_MANY: #{association_name}"
         association_parser_has_many(parent_class, association_name, dependency_type, dependency_path)
       when 'ActiveRecord::Reflection::HasOneReflection'
-        puts "HAS_ONE: #{association_name}"
         association_parser_has_many(parent_class, association_name, dependency_type, dependency_path)
       when 'ActiveRecord::Reflection::BelongsToReflection'
-        puts "BELONGS_TO: #{association_name}"
         association_parser_belongs_to(parent_class, association_name, dependency_type, dependency_path)
       else
         report_message("Unsupported association type for #{parent_class.name}'s association '#{association_name}': #{reflection_type}")
@@ -155,6 +143,11 @@ module BulkDependencyEraser
     # Handles the :has_many association type
     # - handles it's polymorphic associations internally (easier on the has_many)
     def association_parser_has_many(parent_class, association_name, dependency_type, dependency_path)
+      raise "parent_class missing" unless parent_class
+      raise "#{parent_class} - association_name: missing" unless association_name
+      raise "#{parent_class} - dependency_type: missing"  unless dependency_type
+      raise "#{parent_class} - dependency_path: nil"      if dependency_path.nil?
+
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
@@ -207,7 +200,7 @@ module BulkDependencyEraser
         )
       end
 
-      if dependency_type == :restricted && traverse_restricted_dependency?(parent_class, reflection)
+      if DEPENDENCY_RESTRICT.include?(dependency_type) && traverse_restricted_dependency?(parent_class, reflection)
         klass_dependencies_parser(assoc_klass, klass_action: dependency_type, dependency_path: dependency_path.dup << parent_class.name)
       else
         klass_dependencies_parser(assoc_klass, klass_action: dependency_type, dependency_path: dependency_path.dup << parent_class.name)
@@ -215,13 +208,18 @@ module BulkDependencyEraser
     end
 
     def association_parser_belongs_to(parent_class, association_name, dependency_type, dependency_path)
-      puts "association_parser_belongs_to"
+      raise "parent_class missing" unless parent_class
+      raise "#{parent_class} - association_name: missing" unless association_name
+      raise "#{parent_class} - dependency_type: missing"  unless dependency_type
+      raise "#{parent_class} - dependency_path: nil"      if dependency_path.nil?
+
       reflection = parent_class.reflect_on_association(association_name)
       reflection_type = reflection.class.name
 
       is_polymorphic = reflection.options[:polymorphic]
       if is_polymorphic
-        @dependencies_per_klass[parent_class.name] += find_klasses_from_polymorphic_dependency(parent_class)
+        assoc_klass = find_klasses_from_polymorphic_dependency(parent_class).map(&:constantize)
+        @dependencies_per_klass[parent_class.name] += assoc_klass.map(&:name)
       else
         assoc_klass = reflection.klass
         @dependencies_per_klass[parent_class.name] << assoc_klass.name
@@ -240,13 +238,11 @@ module BulkDependencyEraser
         )
         return
       end
-      puts "GOT HERE, AND MIGHT BE WRONG: #{dependency_type}"
+
       if (
         DEPENDENCY_DESTROY.include?(dependency_type) ||
         DEPENDENCY_NULLIFY.include?(dependency_type) && traverse_restricted_dependency?(parent_class, reflection)
       )
-        puts "FOR #{parent_class.name}'s ASSOCIATION #{association_name}, calling"
-        puts "klass_dependencies_parser(#{assoc_klass}, dependency_path: #{dependency_path.dup << parent_class.name})"
         klass_dependencies_parser(assoc_klass, klass_action: dependency_type, dependency_path: dependency_path.dup << parent_class.name)
       end
     end

@@ -85,9 +85,34 @@ module BulkDependencyEraser
       raise NotImplementedError
     end
 
+    def report_error msg
+      # remove new lines, surrounding white space, replace with semicolon delimiters
+      n = msg.strip.gsub(/\s*\n\s*/, ' ')
+      @errors << n
+    end
+
+    def merge_errors errors, prefix = nil
+      local_errors = errors.dup
+
+      unless local_errors.any?
+        local_errors << '<NO ERRORS FOUND TO MERGE>'
+      end
+
+      if prefix
+        local_errors = errors.map { |error| prefix + error }
+      end
+      @errors += local_errors
+    end
+
     protected
 
+    def constantize(klass_name)
+      # circular dependencies have suffixes, shave them off
+      klass_name.sub(/\.\d+$/, '').constantize
+    end
+
     # A dependent assoc may be through another association. Follow the throughs to find the correct assoc to destroy.
+    # @return [Symbol] - association's name
     def find_root_association_from_through_assocs klass, association_name
       reflection = klass.reflect_on_association(association_name)
       options = reflection.options
@@ -120,25 +145,6 @@ module BulkDependencyEraser
         *self.class::DEFAULT_OPTS.keys,
         keyword_init: true
       ).freeze
-    end
-
-    def report_error msg
-      # remove new lines, surrounding white space, replace with semicolon delimiters
-      n = msg.strip.gsub(/\s*\n\s*/, ' ')
-      @errors << n
-    end
-
-    def merge_errors errors, prefix = nil
-      local_errors = errors.dup
-
-      unless local_errors.any?
-        local_errors << '<NO ERRORS FOUND TO MERGE>'
-      end
-
-      if prefix
-        local_errors = errors.map { |error| prefix + error }
-      end
-      @errors += local_errors
     end
 
     def uniqify_errors!
