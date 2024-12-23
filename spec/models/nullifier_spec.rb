@@ -61,4 +61,16 @@ RSpec.describe BulkDependencyEraser::Nullifier do
       expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(3).times
     end
   end
+
+  context 'when nullification error occurs' do
+    before do
+      allow_any_instance_of(ActiveRecord::Relation).to receive(:update_all).and_raise(StandardError.new("Update all is forbidden"))
+    end
+
+    it "should catch and report the NullifierError" do
+      do_request
+
+      expect(subject.errors).to eq(["Issue attempting to nullify klass 'Part' on column(s) 'name' => StandardError: Update all is forbidden"])
+    end
+  end
 end

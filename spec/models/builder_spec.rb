@@ -46,4 +46,16 @@ RSpec.describe BulkDependencyEraser::Builder do
       expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :reading).exactly(29).times
     end
   end
+
+  context 'when build query error occurs' do
+    before do
+      allow_any_instance_of(ActiveRecord::Relation).to receive(:pluck).and_raise(StandardError.new("Pluck is forbidden"))
+    end
+
+    it "should catch and report the BuilderError" do
+      do_request
+
+      expect(subject.errors).to eq(["Issue attempting to build deletion query for 'User' => StandardError: Pluck is forbidden"])
+    end
+  end
 end

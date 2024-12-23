@@ -22,8 +22,13 @@ opts: {
     ActiveRecord::Base.transaction do
       begin
         block.call # execute deletions
-      rescue StandardError => e
-        deleter.report_error("Issue attempting to delete: #{e.class.name} - #{e.message}")
+      rescue BulkDependencyEraser::Errors::DeleterError => e
+        deleter.report_error(
+          <<~STRING.strip
+          Issue attempting to delete klass '#{e.deleting_klass_name}'
+            => #{e.original_error_klass.name}: #{e.message}
+          STRING
+        )
         raise ActiveRecord::Rollback
       end
     end
@@ -33,7 +38,12 @@ opts: {
       begin
         block.call # execute nullifications
       rescue StandardError => e
-        nullifier.report_error("Issue attempting to nullify: #{e.class.name} - #{e.message}")
+        nullifier.report_error(
+          <<~STRING.strip
+          Issue attempting to nullify klass '#{e.nullifying_klass_name}' on column(s) '#{e.nullifying_columns}'
+            => #{e.original_error_klass.name}: #{e.message}
+          STRING
+        )
         raise ActiveRecord::Rollback
       end
     end

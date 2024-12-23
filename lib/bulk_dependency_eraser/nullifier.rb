@@ -3,8 +3,13 @@ module BulkDependencyEraser
     DEFAULT_DB_NULLIFY_ALL_WRAPPER = ->(nullifier, block) do
       begin
         block.call
-      rescue StandardError => e
-        nullifier.report_error("Issue attempting to nullify: #{e.class.name} - #{e.message}")
+      rescue BulkDependencyEraser::Errors::NullifierError => e
+        nullifier.report_error(
+          <<~STRING.strip
+          Issue attempting to nullify klass '#{e.nullifying_klass_name}' on column(s) '#{e.nullifying_columns}'
+            => #{e.original_error_klass.name}: #{e.message}
+          STRING
+        )
       end
     end
 
@@ -114,6 +119,7 @@ module BulkDependencyEraser
       current_class_name = 'N/A'
       current_column = 'N/A'
       nullify_all_in_db do
+        begin
         # column_and_ids should have already been reversed in builder
         class_names_columns_and_ids.keys.reverse.each do |class_name|
           current_class_name = class_name
@@ -138,6 +144,14 @@ module BulkDependencyEraser
               end
             end
           end
+        end
+        rescue StandardError => e
+          raise BulkDependencyEraser::Errors::NullifierError.new(
+            e.class,
+            e.message,
+            nullifying_klass_name: current_class_name,
+            nullifying_columns: current_column.to_s # could be an array, string, or symbol
+          )
         end
       end
 

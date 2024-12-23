@@ -1,8 +1,22 @@
 module BulkDependencyEraser
   class Builder < Base
+    DEFAULT_DB_BUILD_ALL_WRAPPER = ->(builder, block) do
+      begin
+        block.call
+      rescue StandardError => e
+        builder.report_error(
+          <<~STRING.strip
+          Issue attempting to build deletion query for '#{e.building_klass_name}'
+            => #{e.original_error_klass.name}: #{e.message}
+          STRING
+        )
+      end
+    end
+
     DEFAULT_OPTS = {
       force_destroy_restricted: false,
       verbose: false,
+      db_build_all_wrapper: self::DEFAULT_DB_BUILD_ALL_WRAPPER,
       # Some associations scopes take parameters.
       # - We would have to instantiate if we wanted to apply that scope filter.
       instantiate_if_assoc_scope_with_arity: false,
@@ -38,6 +52,7 @@ module BulkDependencyEraser
     attr_accessor :deletion_list, :nullification_list
     attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
     attr_reader :query_schema_parser
+    attr_reader :current_klass_name
 
     delegate :circular_dependency_klasses, :flat_dependencies_per_klass, to: :query_schema_parser
 
@@ -57,6 +72,8 @@ module BulkDependencyEraser
       @ignore_table_name_and_dependencies = opts_c.ignore_tables_and_dependencies.collect { |table_name| table_name }
       @ignore_klass_name_and_dependencies = opts_c.ignore_klass_names_and_dependencies.collect { |klass_name| klass_name }
       @query_schema_parser = BulkDependencyEraser::QuerySchemaParser.new(query:, opts:)
+      # Moving pointer, points to the current class that is being queries
+      @current_klass_name = query.is_a?(ActiveRecord::Relation) ? query.klass.name : query.name
     end
 
     def execute
@@ -82,33 +99,20 @@ module BulkDependencyEraser
     end
 
     def build
-      begin
-        if opts_c.verbose
-          puts "Starting build for #{@query.is_a?(ActiveRecord::Relation) ? @query.klass.name : @query.name}"
+      build_all_in_db do
+        begin
+          if opts_c.verbose
+            puts "Starting build for #{@query.is_a?(ActiveRecord::Relation) ? @query.klass.name : @query.name}"
+          end
+
+          deletion_query_parser(@query)
+
+          uniqify_errors!
+
+          return errors.none?
+        rescue StandardError => e
+          raise BulkDependencyEraser::Errors::BuilderError.new(e.class, e.message, building_klass_name: current_klass_name)
         end
-
-        deletion_query_parser(@query)
-
-        uniqify_errors!
-
-        return errors.none?
-      rescue StandardError => e
-        if @query.is_a?(ActiveRecord::Relation)
-          klass      = @query.klass
-        else
-          # current_query is a normal rails class
-          klass      = @query
-        end
-        report_error(
-          "
-            Error Encountered in 'execute' for '#{klass.name}':
-              #{e.class.name}
-              #{e.message}
-          "
-        )
-        raise e
-
-        return false
       end
     end
 
@@ -127,7 +131,8 @@ module BulkDependencyEraser
       end
     end
 
-    def pluck_from_query query, column = :id
+    def pluck_from_query(query, column = :id)
+      set_current_klass_name(query)
       # ordering shouldn't matter in these queries, and would slow it down
       # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
       query = query.reorder('')
@@ -293,6 +298,7 @@ module BulkDependencyEraser
       is_polymorphic = reflection.options[:polymorphic]
       unless is_polymorphic
         klass = reflection.klass
+        set_current_klass_name(reflection.klass)
 
         if ignore_table_name_and_dependencies.include?(klass.table_name)
           # Not parsing, table and dependencies ignorable
@@ -444,7 +450,6 @@ module BulkDependencyEraser
       reflection_type = reflection.class.name
       assoc_klass = reflection.klass
       assoc_klass_name = assoc_klass.name
-
 
       # specified_primary_key = reflection.options[:primary_key]&.to_s
       # specified_foreign_key = reflection.options[:foreign_key]&.to_s
@@ -738,6 +743,17 @@ module BulkDependencyEraser
       end
 
       return klass_index
+    end
+
+    def build_all_in_db(&block)
+      puts "Building all from DB..." if opts_c.verbose
+      opts_c.db_build_all_wrapper.call(self, block)
+      puts "Building all from DB complete." if opts_c.verbose
+    end
+
+    def set_current_klass_name(query_or_klass)
+      klass = query_or_klass.is_a?(ActiveRecord::Relation) ? query_or_klass.klass : query_or_klass
+      @current_klass_name = klass.name
     end
   end
 end

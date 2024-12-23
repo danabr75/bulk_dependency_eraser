@@ -17,6 +17,13 @@ Gem::Specification.new do |s|
     "lib/bulk_dependency_eraser/manager.rb",
     "lib/bulk_dependency_eraser/nullifier.rb",
     "lib/bulk_dependency_eraser/version.rb",
+    "lib/bulk_dependency_eraser/utils.rb",
+    "lib/bulk_dependency_eraser/full_schema_parser.rb",
+    "lib/bulk_dependency_eraser/query_schema_parser.rb",
+    'lib/bulk_dependency_eraser/errors/base_error.rb',
+    'lib/bulk_dependency_eraser/errors/builder_error.rb',
+    'lib/bulk_dependency_eraser/errors/deleter_error.rb',
+    'lib/bulk_dependency_eraser/errors/nullifier_error.rb'
   ]
   s.require_paths = ["lib"]
   s.homepage = 'https://github.com/danabr75/bulk_dependency_eraser'

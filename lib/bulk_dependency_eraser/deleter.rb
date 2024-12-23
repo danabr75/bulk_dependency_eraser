@@ -3,8 +3,13 @@ module BulkDependencyEraser
     DEFAULT_DB_DELETE_ALL_WRAPPER = ->(deleter, block) do
       begin
         block.call
-      rescue StandardError => e
-        report_error("Issue attempting to delete '#{current_class_name}': #{e.class.name} - #{e.message}")
+      rescue BulkDependencyEraser::Errors::DeleterError => e
+        deleter.report_error(
+          <<~STRING.strip
+          Issue attempting to delete klass '#{e.deleting_klass_name}'
+            => #{e.original_error_klass.name}: #{e.message}
+          STRING
+        )
       end
     end
 
@@ -60,23 +65,27 @@ module BulkDependencyEraser
 
       current_class_name = 'N/A'
       delete_all_in_db do
-        class_names_and_ids.keys.reverse.each do |class_name|
-          current_class_name = class_name
-          ids = class_names_and_ids[class_name].reverse
-          klass = constantize(class_name)
+        begin
+          class_names_and_ids.keys.reverse.each do |class_name|
+            current_class_name = class_name
+            ids = class_names_and_ids[class_name].reverse
+            klass = constantize(class_name)
 
-          if opts_c.enable_invalid_foreign_key_detection
-            # delete with referential integrity
-            delete_by_klass_and_ids(klass, ids)
-          else
-            # delete without referential integrity
-            # Disable any ActiveRecord::InvalidForeignKey raised errors.
-            # - src: https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
-            #        https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
-            ActiveRecord::Base.connection.disable_referential_integrity do
+            if opts_c.enable_invalid_foreign_key_detection
+              # delete with referential integrity
               delete_by_klass_and_ids(klass, ids)
+            else
+              # delete without referential integrity
+              # Disable any ActiveRecord::InvalidForeignKey raised errors.
+              # - src: https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
+              #        https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
+              ActiveRecord::Base.connection.disable_referential_integrity do
+                delete_by_klass_and_ids(klass, ids)
+              end
             end
           end
+        rescue StandardError => e
+          raise BulkDependencyEraser::Errors::DeleterError.new(e.class, e.message, deleting_klass_name: current_class_name)
         end
       end
 

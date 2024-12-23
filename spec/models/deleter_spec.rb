@@ -58,4 +58,16 @@ RSpec.describe BulkDependencyEraser::Deleter do
       expect(ActiveRecord::Base).to have_received(:connected_to).with(role: :writing).exactly(14).times
     end
   end
+
+  context 'when deletion error occurs' do
+    before do
+      allow_any_instance_of(ActiveRecord::Relation).to receive(:delete_all).and_raise(StandardError.new("Delete all is forbidden"))
+    end
+
+    it "should catch and report the DeleterError" do
+      do_request
+
+      expect(subject.errors).to eq(["Issue attempting to delete klass 'Part' => StandardError: Delete all is forbidden"])
+    end
+  end
 end

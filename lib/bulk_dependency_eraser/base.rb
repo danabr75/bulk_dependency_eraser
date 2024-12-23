@@ -123,6 +123,8 @@ module BulkDependencyEraser
       end
     end
 
+    # We're supporting custom query scopes on by klass name.
+    # - apply them here
     def custom_scope_for_query(query)
       klass = query.klass
       if opts_c.proc_scopes_per_class_name.key?(klass.name)
