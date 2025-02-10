@@ -28,6 +28,12 @@ module BulkDependencyEraser
       ignore_tables_and_dependencies: [],
       ignore_klass_names_and_dependencies: [],
       disable_batching: false,
+      # Disable model ordering during build batching
+      # - Some tables can be too big to order, and just need to trust the DB order
+      # - Not 100% guaranteed and could leave orphaned records behind.
+      disable_batch_ordering: false,
+      # Same as 'disable_batch_ordering', but only for select classes
+      disable_batch_ordering_for_klasses: [],
       # a general batching size
       batch_size: 10_000,
       # A specific batching size for this class, overrides the batch_size
@@ -144,8 +150,8 @@ module BulkDependencyEraser
         if batching_disabled? || !query.where({}).limit_value.nil?
           # query without batching
           query_ids = query.pluck(column)
-        else
-          # query with batching
+        elsif opts_c.disable_batch_ordering || opts_c.disable_batch_ordering_for_klasses.include?(current_klass_name)
+          # query with orderless batching
           offset = 0
           loop do
             new_query_ids = query.offset(offset).limit(batch_size).pluck(column)
@@ -155,6 +161,11 @@ module BulkDependencyEraser
 
             # Move to the next batch
             offset += batch_size
+          end
+        else
+          # query with ordered batching
+          query.in_batches(of: batch_size) do |subset_query|
+            query_ids += subset_query.pluck(column)
           end
         end
       end

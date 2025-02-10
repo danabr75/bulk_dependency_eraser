@@ -40,6 +40,7 @@ RSpec.describe BulkDependencyEraser::Manager do
   # - any options that would change the results have to be checked in their own custom rspec contexts
   options = [
     nil,
+    {},
     { batch_size: 1 },
     { read_batch_size: 1, delete_batch_size: 1, nullify_batch_size: 1 },
     {
@@ -59,6 +60,8 @@ RSpec.describe BulkDependencyEraser::Manager do
       disable_nullify_batching: true,
       disable_delete_batching: true
     },
+    { disable_batch_ordering: true },
+    { disable_batch_ordering_for_klasses: ['User'] },
     { reading_proc_scopes_per_class_name:       { 'User' => ->(query) { query.order(id: :desc) } } },
     { deletion_proc_scopes_per_class_name:      { 'User' => ->(query) { query.order(id: :desc) } } },
     { nullification_proc_scopes_per_class_name: { 'User' => ->(query) { query.order(id: :desc) } } },

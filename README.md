@@ -203,6 +203,16 @@ opts: { delete_batch_size: <Integer> }  # will be applied to reading (and will o
 opts: { nullify_batch_size: <Integer> } # will be applied to reading (and will override :batch_size for deleting)
 ```
 
+### Option: Batching (reading) without ordering
+```
+# Sometimes you have a table so big that you can't afford to order it before reading it.
+# These options will disable any batching order and merely trust the order that the DB returns the records are consistent.
+# - This can leave behind orphaned records. Use at your own risk!
+opts: { disable_batch_ordering: true } # Will remove batch ordering for all (overrides 'disable_batch_ordering_for_klasses').
+opts: { disable_batch_ordering_for_klasses: [<String>, ...] } # Will only remove batch ordering for the contained classes
+```
+
+
 ### TODO: Option: Instantiation
 - Feature currently is in development
 ```
