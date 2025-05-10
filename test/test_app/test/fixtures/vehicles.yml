@@ -1,35 +1,41 @@
 ---
 vehicles_001:
+  ctid: '(6,1)'
   id: 1
   model: "Caraven"
   type: "Car"
   brand_id: 4
   owner_id: 1
 vehicles_002:
+  ctid: '(6,2)'
   id: 2
   model: "Roadster"
   type: "Car"
   brand_id: 5
   owner_id: 1
 vehicles_003:
+  ctid: '(6,3)'
   id: 3
   model: "Firebird"
   type: "Car"
   brand_id: 1
   owner_id: 1
 vehicles_004:
+  ctid: '(6,4)'
   id: 4
   model: "Rebel"
   type: "Motorcycle"
   brand_id: 2
   owner_id: 1
 vehicles_005:
+  ctid: '(6,5)'
   id: 5
   model: "Civic"
   type: "VehicleWithNoDependent"
   brand_id: 2
   owner_id:
 vehicles_006:
+  ctid: '(6,6)'
   id: 6
   model: "CRV"
   type: "VehicleAlsoWithNoDependent"

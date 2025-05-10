@@ -212,6 +212,16 @@ opts: { disable_batch_ordering: true } # Will remove batch ordering for all (ove
 opts: { disable_batch_ordering_for_klasses: [<String>, ...] } # Will only remove batch ordering for the contained classes
 ```
 
+### Option: Deleting with PG system column CTID
+```
+# Postgresql databases support a CTID column. It represents the location of the tuple in the database.
+# - They are subject to change and not reliable long-term.
+# - However, using them in addition to the ID column can result in a 10x deletion speed increase.
+#   - Since we're still deleting by ID, there's no chance that the wrong record will be deleted. Just a small chance we may miss a record deletion.
+# - It's your responsibility to know what you're doing if you enable this option!
+opts: { use_pg_system_column_ctid: true }
+```
+
 
 ### TODO: Option: Instantiation
 - Feature currently is in development

@@ -95,6 +95,9 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
       }
     },
+    {
+      use_pg_system_column_ctid: true
+    }
   ]
   options.each do |option_set|
     context "with options: #{option_set.nil? ? 'nil' : option_set}" do
@@ -1487,6 +1490,100 @@ RSpec.describe BulkDependencyEraser::Manager do
         expect(@nullify_proc_run_count).to eq(2)
         expect(@nullify_proc_run_count).to eq(subject.nullification_list['User'].keys.count)
       end 
+    end
+  end
+
+
+  context 'using opts: { use_pg_system_column_ctid: true }' do
+    context 'default id/ctid pairings' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { use_pg_system_column_ctid: true }
+      end
+
+      it "should execute successfully" do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+           .and change(Motorcycle, :count).by(-1)
+           .and change(Car, :count).by(-3)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_request
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => {:ctid=>"(2,1)"},
+            2 => {:ctid=>"(2,2)"},
+            3 => {:ctid=>"(2,3)"},
+            4 => {:ctid=>"(2,4)"},
+            5 => {:ctid=>"(2,5)"},
+            6 => {:ctid=>"(2,6)"}
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Motorcycle']
+        ).to eq(
+          {
+            4 => {:ctid=>"(6,4)"}
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Car']
+        ).to eq(
+          {
+            1 => {:ctid=>"(6,1)"},
+            2 => {:ctid=>"(6,2)"},
+            3 => {:ctid=>"(6,3)"}
+          }
+        )
+      end
+    end
+
+    context 'with changed CTID value on User post-build and pre-delete' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { use_pg_system_column_ctid: true }
+      end
+      let!(:persisted_user) {User.find_by_email('test@test.test')}
+      let(:do_build) { super() && persisted_user.update!(ctid: '(2,100)') }
+
+      it "should execute and not delete User with changed CTID" do
+        aggregate_failures do
+          expect(do_build).to be_truthy
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-5)
+
+          expect(subject.errors).to be_empty
+          expect(User.exists?(persisted_user.id)).to be_truthy
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_build
+        do_request
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => {:ctid=>"(2,1)"},
+            2 => {:ctid=>"(2,2)"},
+            3 => {:ctid=>"(2,3)"},
+            4 => {:ctid=>"(2,4)"},
+            5 => {:ctid=>"(2,5)"},
+            6 => {:ctid=>"(2,6)"}
+          }
+        )
+      end
     end
   end
 

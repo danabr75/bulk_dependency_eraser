@@ -52,10 +52,13 @@ module BulkDependencyEraser
       # Applied to reading queries
       # - 1st priority of scopes
       reading_proc_scopes_per_class_name: {},
+      # Using PG system column CTID can result in a 10x deletion speed increase
+      # - is used in combination with the primary key column to ensure CTID hasn't changed.
+      use_pg_system_column_ctid: false,
     }.freeze
 
     # write access so that these can be edited in-place by end-users who might need to manually adjust deletion order.
-    attr_accessor :deletion_list, :nullification_list
+    attr_accessor :deletion_list, :nullification_list, :deletion_list_with_additional_identifiers
     attr_reader :ignore_table_deletion_list, :ignore_table_nullification_list
     attr_reader :query_schema_parser
     attr_reader :current_klass_name
@@ -65,6 +68,15 @@ module BulkDependencyEraser
     def initialize query:, opts: {}
       @query = query
       @deletion_list  = {}
+      # CTID column values are stored here
+      # -   key: <klass_name (with or without suffixes)>
+      # - value: Hash
+      #   -   key: Individual record's ID
+      #   - value: Hash
+      #     -   key: Column Name
+      #     - value: plucked column value
+      # - these additional identifiers will be used when deleting the klasses
+      @deletion_list_with_additional_identifiers = {}
       @nullification_list = {}
 
       # For any ignored table results, they will be stored here
@@ -95,9 +107,13 @@ module BulkDependencyEraser
       # - prior approach was to use table_name.classify, but we can't trust that approach.
       opts_c.ignore_tables.each do |table_name|
         table_names_to_parsed_klass_names.dig(table_name)&.each do |klass_name|
-          klass_index = deletion_index_key(klass_name.constantize)
-          ignore_table_deletion_list[klass_index]      = deletion_list.delete(klass_index)      if deletion_list.key?(klass_index)
-          ignore_table_nullification_list[klass_index] = nullification_list.delete(klass_index) if nullification_list.key?(klass_index)
+          klass = klass_name.constantize
+          # Delete klasses from the deletion/nullification lists if they are from ignored tables.
+          # - Handles klass name indexes, with and without suffices.
+          deletion_index_keys(klass).each do |klass_index|
+            ignore_table_deletion_list[klass_index]      = deletion_list.delete(klass_index)      if deletion_list.key?(klass_index)
+            ignore_table_nullification_list[klass_index] = nullification_list.delete(klass_index) if nullification_list.key?(klass_index)
+          end
         end
       end
 
@@ -137,27 +153,44 @@ module BulkDependencyEraser
       end
     end
 
-    def pluck_from_query(query, column = :id)
+    # @param [ActiveRecord::Relation] query
+    # @param [Symbol | Array<Symbol>] column - primary_key must be the first or only element in the column.
+    # @return [
+    #   [Array<String | Int>] array of column values,
+    #   [Hash] hash of column/value pairings - additional identifiers.
+    # ]
+    def pluck_from_query(query, column = :id, skip_ctid_check: false)
+      if column.is_a?(Array)
+        columns = column
+      else
+        columns = [column]
+      end
+
+      # Only pluck CTID if we're plucking column :id (the only primary key supported)
+      if columns == [:id] && opts_c.use_pg_system_column_ctid && skip_ctid_check == false
+        columns << :ctid
+      end
+
       set_current_klass_name(query)
       # ordering shouldn't matter in these queries, and would slow it down
       # - we're ignoring default_scope ordering, but assoc-defined ordering would still take effect
       query = query.reorder('')
       query = custom_scope_for_query(query)
 
-      query_ids = []
+      query_results = []
       read_from_db do
         # If the query has a limit, then we don't want to clobber with batching.
         if batching_disabled? || !query.where({}).limit_value.nil?
           # query without batching
-          query_ids = query.pluck(column)
+          query_results = query.pluck(*columns)
         elsif opts_c.disable_batch_ordering || opts_c.disable_batch_ordering_for_klasses.include?(current_klass_name)
           # query with orderless batching
           offset = 0
           loop do
-            new_query_ids = query.offset(offset).limit(batch_size).pluck(column)
-            query_ids += new_query_ids
+            new_query_results = query.offset(offset).limit(batch_size).pluck(*columns)
+            query_results += new_query_results
 
-            break if new_query_ids.size < batch_size
+            break if new_query_results.size < batch_size
 
             # Move to the next batch
             offset += batch_size
@@ -165,12 +198,35 @@ module BulkDependencyEraser
         else
           # query with ordered batching
           query.in_batches(of: batch_size) do |subset_query|
-            query_ids += subset_query.pluck(column)
+            query_results += subset_query.pluck(*columns)
           end
         end
       end
 
-      return query_ids
+      # Early exit if we only plucked one column.
+      # - query_results would just be an array of IDs
+      return [query_results, nil] if columns.count == 1
+
+      transposed_results = query_results.transpose
+
+      query_primary_keys = transposed_results.shift || [] # could be an empty id set
+      columns.shift # shift of the primary key column
+
+      query_additional_identifiers = {}
+      results_per_additional_column = {}
+      columns.each do |column|
+        column_results = transposed_results.shift
+        results_per_additional_column[column] = column_results
+      end
+
+      query_primary_keys.each_with_index do |primary_key, plucked_index|
+        query_additional_identifiers[primary_key] ||= {}
+        results_per_additional_column.each do |column, column_results|
+          query_additional_identifiers[primary_key][column] = column_results[plucked_index]
+        end
+      end
+
+      return query_primary_keys, query_additional_identifiers
     end
 
     def batch_size
@@ -179,6 +235,32 @@ module BulkDependencyEraser
 
     def batching_disabled?
       opts_c.disable_read_batching.nil? ? opts_c.disable_batching : opts_c.disable_read_batching
+    end
+
+    # No need for recursion here. Nullifying does not effect nested dependencies
+    def nullification_query_parser(query, nullfication_klass, klass_foreign_key, klass_foreign_type = nil)
+      # We're not destroying these assocs (just nullifying foreign_key columns) so we don't need to parse their dependencies.
+      # Setting skip_ctid_check: true because we currently don't support CTID with nullifications yet
+      assoc_ids, additional_identifiers_by_id = pluck_from_query(query, skip_ctid_check: true)
+      klass_name = nullfication_klass.name
+
+      # No assoc_ids, no need to add it to the nullification list
+      return if assoc_ids.none?
+
+      klass_foreign_key = klass_foreign_key.to_s
+      nullification_list[klass_name] ||= {}
+      nullification_list[klass_name][klass_foreign_key] ||= []
+      nullification_list[klass_name][klass_foreign_key] += assoc_ids
+      nullification_list[klass_name][klass_foreign_key].uniq!
+
+
+      # Also nullify the 'type' field, if the association is polymorphic
+      if klass_foreign_type
+        klass_foreign_type = klass_foreign_type.to_s
+        nullification_list[klass_name][klass_foreign_type] ||= []
+        nullification_list[klass_name][klass_foreign_type] += assoc_ids
+        nullification_list[klass_name][klass_foreign_type].uniq!
+      end
     end
 
     def deletion_query_parser query, association_parent = nil
@@ -225,24 +307,28 @@ module BulkDependencyEraser
       end
 
       # Pluck IDs of the current query
-      query_ids = pluck_from_query(query)
+      query_ids, additional_identifiers_by_id = pluck_from_query(query)
 
       klass_index = initialize_deletion_list_for_klass(klass)
 
       # prevent infinite recursion here.
       # - Remove any IDs that have been processed before
-      query_ids = remove_already_deletion_processed_ids(klass, query_ids)
+      query_ids, additional_identifiers_by_id = remove_already_deletion_processed_ids(klass, query_ids, additional_identifiers_by_id:)
 
       # If ids are nil, let's find that error
       if query_ids.none? #|| query_ids.nil?
         # quick cleanup, if turns out was an empty class
-        deletion_list.delete(klass_index) if deletion_list[klass_index].none?
+        if deletion_list[klass_index].none?
+          deletion_list.delete(klass_index)
+          deletion_list_with_additional_identifiers.delete(klass_index)
+        end
         return
       end
 
       # Use-case: We have more IDs to process
       # - can now safely add to the list, since we've prevented infinite recursion
       deletion_list[klass_index] += query_ids
+      deletion_list_with_additional_identifiers[klass_index].merge!(additional_identifiers_by_id)
 
       # ignore associations that aren't a dependent destroyable type
       destroy_associations = query.reflect_on_all_associations.select do |reflection|
@@ -378,25 +464,25 @@ module BulkDependencyEraser
       end
 
       # Look for manually specified keys in the assocation first
-      specified_primary_key = reflection.options[:primary_key]&.to_s
-      specified_foreign_key = reflection.options[:foreign_key]&.to_s
+      specified_primary_key = reflection.options[:primary_key]&.to_sym
+      specified_foreign_key = reflection.options[:foreign_key]&.to_sym
       # For polymorphic_associations
       specified_foreign_type = nil
 
       # handle foreign_key edge cases
       if specified_foreign_key.nil?
         if reflection.options[:as]
-          specified_foreign_type = "#{reflection.options[:as]}_type"
-          specified_foreign_key = "#{reflection.options[:as]}_id"
+          specified_foreign_type = "#{reflection.options[:as]}_type".to_sym
+          specified_foreign_key = "#{reflection.options[:as]}_id".to_sym
           # Only filtering by type here, the extra work for a poly assoc. We filter by IDs later
-          assoc_query = assoc_query.where({ specified_foreign_type.to_sym => parent_class.name })
+          assoc_query = assoc_query.where({ specified_foreign_type => parent_class.name })
         else
-          specified_foreign_key = parent_class.table_name.singularize + "_id"
+          specified_foreign_key = "#{parent_class.table_name.singularize}_id".to_sym
         end
       end
 
       # Check to see if foreign_key exists in association class's table
-      unless assoc_klass.column_names.include?(specified_foreign_key)
+      unless assoc_klass.column_names.include?(specified_foreign_key.to_s)
         report_error(
           "
           For #{parent_class.name}'s assoc '#{assoc_klass.name}': Could not determine the assoc's foreign key.
@@ -409,11 +495,11 @@ module BulkDependencyEraser
       # Build association query, based on parent class's primary key and the assoc's foreign key
       # - handle primary key edge cases
       # - The associations might not be using the primary_key of the klass table, but we can support that here.
-      if specified_primary_key && specified_primary_key&.to_s != 'id'
-        alt_primary_ids = pluck_from_query(query, specified_primary_key)
-        assoc_query = assoc_query.where(specified_foreign_key.to_sym => alt_primary_ids)
+      if specified_primary_key && specified_primary_key != :id
+        alt_primary_ids, _ = pluck_from_query(query, specified_primary_key)
+        assoc_query = assoc_query.where(specified_foreign_key => alt_primary_ids)
       else
-        assoc_query = assoc_query.where(specified_foreign_key.to_sym => query_ids)
+        assoc_query = assoc_query.where(specified_foreign_key => query_ids)
       end
 
       # remove any ordering or limits imposed on the association queries from the association definitions
@@ -427,25 +513,7 @@ module BulkDependencyEraser
           deletion_query_parser(assoc_query, parent_class)
         end
       elsif type == :nullify
-        # No need for recursion here.
-        # - we're not destroying these assocs (just nullifying foreign_key columns) so we don't need to parse their dependencies.
-        assoc_ids = pluck_from_query(assoc_query)
-
-        # No assoc_ids, no need to add it to the nullification list
-        return if assoc_ids.none?
-
-        nullification_list[assoc_klass_name] ||= {}
-        nullification_list[assoc_klass_name][specified_foreign_key] ||= []
-        nullification_list[assoc_klass_name][specified_foreign_key] += assoc_ids
-        nullification_list[assoc_klass_name][specified_foreign_key].uniq!
-
-
-        # Also nullify the 'type' field, if the association is polymorphic
-        if specified_foreign_type
-          nullification_list[assoc_klass_name][specified_foreign_type] ||= []
-          nullification_list[assoc_klass_name][specified_foreign_type] += assoc_ids
-          nullification_list[assoc_klass_name][specified_foreign_type].uniq!
-        end
+        nullification_query_parser(assoc_query, assoc_klass, specified_foreign_key, specified_foreign_type)
       else
         raise "invalid parsing type: #{type}"
       end
@@ -531,7 +599,7 @@ module BulkDependencyEraser
         return
       end
 
-      foreign_keys = pluck_from_query(query, specified_foreign_key)
+      foreign_keys, _ = pluck_from_query(query, specified_foreign_key, skip_ctid_check: true)
       assoc_query = assoc_query.where(
         specified_primary_key.to_sym => foreign_keys
       )
@@ -690,8 +758,14 @@ module BulkDependencyEraser
       opts_c.db_read_wrapper.call(block)
     end
 
-    def remove_already_deletion_processed_ids(klass, new_ids)
+    # @return [
+    #  [Array] array of IDs that haven't already been added to the deletion list
+    #  [Hash | Nil] the additional deletion query identifiers, minus the ones already processed
+    #    - will be nil if we're not plucking additional columns.
+    # ]
+    def remove_already_deletion_processed_ids(klass, new_ids, additional_identifiers_by_id: nil)
       already_processed_ids = []
+      additional_identifiers_by_id ||= {}
 
       if is_a_circular_dependency_klass?(klass)
         klass_keys = find_circular_dependency_deletion_keys(klass)
@@ -702,7 +776,10 @@ module BulkDependencyEraser
         already_processed_ids = deletion_list[klass.name]
       end
 
-      new_ids - already_processed_ids
+      return [
+        (new_ids - already_processed_ids),
+        additional_identifiers_by_id.except(*already_processed_ids)
+      ]
     end
 
     # Initializes deletion_list index
@@ -714,9 +791,11 @@ module BulkDependencyEraser
         raise "circular_index already existed for klass: #{klass.name}" if deletion_list.key?(klass_index)
 
         deletion_list[klass_index] = []
+        deletion_list_with_additional_identifiers[klass_index] = {}
       else
         # Not a circular dependency, define as normal
         deletion_list[klass_index] ||= []
+        deletion_list_with_additional_identifiers[klass_index] ||= {}
       end
 
       klass_index
@@ -732,6 +811,14 @@ module BulkDependencyEraser
       regex = /^#{escaped_prefix}\.\d+$/
       # find the latest, indexed klass initialization
       deletion_list.keys.select { |key| key.match?(regex) }
+    end
+
+    # returns any current index keys, with or without suffix, in the deletion_list for the given klass param
+    def deletion_index_keys(klass)
+      klass_keys = []
+      klass_keys << klass.name if deletion_list.keys.include?(klass.name)
+      klass_keys += find_circular_dependency_deletion_keys(klass)
+      return klass_keys
     end
 
     # If circular dependency, append a index suffix to the deletion hash key

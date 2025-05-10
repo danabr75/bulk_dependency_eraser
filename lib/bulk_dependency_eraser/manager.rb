@@ -7,7 +7,7 @@ module BulkDependencyEraser
       verbose: false,
     }.freeze
 
-    delegate :nullification_list, :deletion_list, to: :dependency_builder
+    delegate :nullification_list, :deletion_list, :deletion_list_with_additional_identifiers, to: :dependency_builder
     delegate :ignore_table_deletion_list, :ignore_table_nullification_list, to: :dependency_builder
     delegate :circular_dependency_klasses, :flat_dependencies_per_klass, to: :dependency_builder
 
@@ -49,7 +49,11 @@ module BulkDependencyEraser
     end
 
     def delete!
-      @deleter  = BulkDependencyEraser::Deleter.new(class_names_and_ids: deletion_list, opts:)
+      @deleter  = BulkDependencyEraser::Deleter.new(
+        class_names_and_ids: deletion_list,
+        additional_identifiers_by_id: deletion_list_with_additional_identifiers,
+        opts:
+      )
       deleter_execution = deleter.execute
       unless deleter_execution
         puts "Deleter execution FAILED" if opts_c.verbose

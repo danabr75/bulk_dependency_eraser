@@ -53,8 +53,9 @@ module BulkDependencyEraser
       deletion_proc_scopes_per_class_name: {},
     }.freeze
 
-    def initialize class_names_and_ids: {}, opts: {}
+    def initialize class_names_and_ids: {}, additional_identifiers_by_id: {}, opts: {}
       @class_names_and_ids = class_names_and_ids
+      @additional_identifiers_by_id = additional_identifiers_by_id
       super(opts:)
     end
 
@@ -68,19 +69,23 @@ module BulkDependencyEraser
         begin
           class_names_and_ids.keys.reverse.each do |class_name|
             current_class_name = class_name
+            additional_identifiers = additional_identifiers_by_id[class_name]
+            raise "invalid state! #{class_name} not found in 'additional_identifiers_by_id' list" if additional_identifiers.nil?
+
+            # Last in, First out
             ids = class_names_and_ids[class_name].reverse
             klass = constantize(class_name)
 
             if opts_c.enable_invalid_foreign_key_detection
               # delete with referential integrity
-              delete_by_klass_and_ids(klass, ids)
+              delete_by_klass_and_ids(klass, ids, additional_identifiers:)
             else
               # delete without referential integrity
               # Disable any ActiveRecord::InvalidForeignKey raised errors.
               # - src: https://stackoverflow.com/questions/41005849/rails-migrations-temporarily-ignore-foreign-key-constraint
               #        https://apidock.com/rails/ActiveRecord/ConnectionAdapters/AbstractAdapter/disable_referential_integrity
               ActiveRecord::Base.connection.disable_referential_integrity do
-                delete_by_klass_and_ids(klass, ids)
+                delete_by_klass_and_ids(klass, ids, additional_identifiers:)
               end
             end
           end
@@ -94,7 +99,7 @@ module BulkDependencyEraser
 
     protected
 
-    attr_reader :class_names_and_ids
+    attr_reader :class_names_and_ids, :additional_identifiers_by_id
 
     def custom_scope_for_query(query)
       klass = query.klass
@@ -113,29 +118,49 @@ module BulkDependencyEraser
       opts_c.disable_delete_batching.nil? ? opts_c.disable_batching : opts_c.disable_delete_batching
     end
 
-    def delete_by_klass_and_ids klass, ids
+    def delete_by_klass_and_ids(klass, ids, additional_identifiers:)
       puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
       query = klass.unscoped
       query = custom_scope_for_query(query)
 
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
+        # Get column-names/keys of any additional identifer columns
+        detected_additional_identifier_columns = additional_identifiers.values.flat_map(&:keys).uniq
         delete_in_db do
-          deletion_result = query.where(id: ids).delete_all
+          deletion_query = query.where(id: ids)
+          # Apply any additional query identifiers (i.e. :ctid column)
+          detected_additional_identifier_columns.each do |column|
+            deletion_query = deletion_query.where(column => additional_identifiers.values.pluck(column))
+          end
+
+          # Perform Deletion
+          deletion_result = deletion_query.delete_all
           # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
           # and have access to these objects in their proc.
             # - query can give them access to the klass and table_name
-          [deletion_result, query, ids]
+          [deletion_result, query, ids, additional_identifiers]
         end
       else
         puts "Deleting with batching" if opts_c.verbose
         ids.each_slice(batch_size) do |ids_subset|
+          additional_identifiers_subset = additional_identifiers.slice(*ids_subset)
+          # Get column-names/keys of any additional identifer columns
+          detected_additional_identifier_columns = additional_identifiers_subset.values.flat_map(&:keys).uniq
           delete_in_db do
-            deletion_result = query.where(id: ids_subset).delete_all
+            deletion_query = query.where(id: ids_subset)
+            # Apply any additional query identifiers (i.e. :ctid column)
+            detected_additional_identifier_columns.each do |column|
+              deletion_query = deletion_query.where(column => additional_identifiers_subset.values.pluck(column))
+            end
+
+            # Perform Deletion
+            deletion_result = deletion_query.delete_all
+
             # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
             # and have access to these objects in their proc.
             # - query can give them access to the klass and table_name
-            [deletion_result, query, ids_subset]
+            [deletion_result, query, ids_subset, additional_identifiers_subset]
           end
         end
       end
