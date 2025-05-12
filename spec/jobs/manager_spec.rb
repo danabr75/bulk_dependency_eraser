@@ -1526,28 +1526,28 @@ RSpec.describe BulkDependencyEraser::Manager do
           subject.deletion_list_with_additional_identifiers['User.0']
         ).to eq(
           {
-            1 => {:ctid=>"(2,1)"},
-            2 => {:ctid=>"(2,2)"},
-            3 => {:ctid=>"(2,3)"},
-            4 => {:ctid=>"(2,4)"},
-            5 => {:ctid=>"(2,5)"},
-            6 => {:ctid=>"(2,6)"}
+            1 => { 'ctid' => "(2,1)" },
+            2 => { 'ctid' => "(2,2)" },
+            3 => { 'ctid' => "(2,3)" },
+            4 => { 'ctid' => "(2,4)" },
+            5 => { 'ctid' => "(2,5)" },
+            6 => { 'ctid' => "(2,6)" }
           }
         )
         expect(
           subject.deletion_list_with_additional_identifiers['Motorcycle']
         ).to eq(
           {
-            4 => {:ctid=>"(6,4)"}
+            4 => { 'ctid' =>"(6,4)"}
           }
         )
         expect(
           subject.deletion_list_with_additional_identifiers['Car']
         ).to eq(
           {
-            1 => {:ctid=>"(6,1)"},
-            2 => {:ctid=>"(6,2)"},
-            3 => {:ctid=>"(6,3)"}
+            1 => { 'ctid' =>"(6,1)" },
+            2 => { 'ctid' =>"(6,2)" },
+            3 => { 'ctid' =>"(6,3)" }
           }
         )
       end
@@ -1581,12 +1581,12 @@ RSpec.describe BulkDependencyEraser::Manager do
           subject.deletion_list_with_additional_identifiers['User.0']
         ).to eq(
           {
-            1 => {:ctid=>"(2,1)"},
-            2 => {:ctid=>"(2,2)"},
-            3 => {:ctid=>"(2,3)"},
-            4 => {:ctid=>"(2,4)"},
-            5 => {:ctid=>"(2,5)"},
-            6 => {:ctid=>"(2,6)"}
+            1 => { 'ctid' => "(2,1)" },
+            2 => { 'ctid' => "(2,2)" },
+            3 => { 'ctid' => "(2,3)" },
+            4 => { 'ctid' => "(2,4)" },
+            5 => { 'ctid' => "(2,5)" },
+            6 => { 'ctid' => "(2,6)" }
           }
         )
       end

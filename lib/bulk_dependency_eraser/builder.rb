@@ -232,7 +232,8 @@ module BulkDependencyEraser
       query_primary_keys.each_with_index do |primary_key, plucked_index|
         query_additional_identifiers[primary_key] ||= {}
         results_per_additional_column.each do |column, column_results|
-          query_additional_identifiers[primary_key][column] = column_results[plucked_index]
+          # stringify the column key. All keys in the additional_identifiers are strings; The unification is nice and also JSONable.
+          query_additional_identifiers[primary_key][column.to_s] = column_results[plucked_index]
         end
       end
 
