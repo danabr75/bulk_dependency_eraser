@@ -58,7 +58,7 @@ module BulkDependencyEraser
 
     def initialize class_names_and_ids: {}, additional_identifiers_by_id: {}, opts: {}
       @class_names_and_ids = class_names_and_ids
-      @additional_identifiers_by_id = additional_identifiers_by_id
+      @additional_identifiers_by_id = additional_identifiers_by_id || {}
       super(opts:)
     end
 
@@ -73,7 +73,8 @@ module BulkDependencyEraser
           class_names_and_ids.keys.reverse.each do |class_name|
             current_class_name = class_name
             additional_identifiers = additional_identifiers_by_id[class_name]
-            raise "invalid state! #{class_name} not found in 'additional_identifiers_by_id' list" if additional_identifiers.nil?
+            # We have to give implementers the ability to make changes to these lists. Even a full clear.
+            # raise "invalid state! #{class_name} not found in 'additional_identifiers_by_id' list" if additional_identifiers.nil?
 
             # Last in, First out
             ids = class_names_and_ids[class_name].reverse
@@ -128,6 +129,7 @@ module BulkDependencyEraser
       opts_c.disable_delete_batching.nil? ? opts_c.disable_batching : opts_c.disable_delete_batching
     end
 
+    # @param additional_identifiers [Hash] can be nil, if chosen to be so by implementers
     def delete_by_klass_and_ids(klass, ids, additional_identifiers:)
       puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
       query = klass.unscoped
@@ -136,7 +138,7 @@ module BulkDependencyEraser
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
         # Get column-names/keys of any additional identifer columns
-        detected_additional_identifier_columns = additional_identifiers.values.flat_map(&:keys).uniq
+        detected_additional_identifier_columns = additional_identifiers&.values&.flat_map(&:keys)&.uniq || []
         delete_in_db do
           deletion_query = query.where(id: ids)
           # Apply any additional query identifiers (i.e. :ctid column)
@@ -154,9 +156,9 @@ module BulkDependencyEraser
       else
         puts "Deleting with batching" if opts_c.verbose
         ids.each_slice(batch_size) do |ids_subset|
-          additional_identifiers_subset = additional_identifiers.slice(*ids_subset)
+          additional_identifiers_subset = additional_identifiers&.slice(*ids_subset)
           # Get column-names/keys of any additional identifer columns
-          detected_additional_identifier_columns = additional_identifiers_subset.values.flat_map(&:keys).uniq
+          detected_additional_identifier_columns = additional_identifiers_subset&.values&.flat_map(&:keys)&.uniq || []
           delete_in_db do
             deletion_query = query.where(id: ids_subset)
             # Apply any additional query identifiers (i.e. :ctid column)

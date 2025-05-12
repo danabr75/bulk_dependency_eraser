@@ -1591,6 +1591,26 @@ RSpec.describe BulkDependencyEraser::Manager do
         )
       end
     end
+
+    context 'with cleared CTID values post-build and pre-delete' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { use_pg_system_column_ctid: true }
+      end
+
+      it "should execute and still delete all users" do
+        expect(do_build).to be_truthy
+        subject.deletion_list_with_additional_identifiers.clear
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+
+          expect(subject.errors).to be_empty
+        end
+      end
+    end
   end
 
 
