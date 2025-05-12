@@ -73,6 +73,12 @@ RSpec.describe BulkDependencyEraser::Manager do
     },
     { proc_scopes: ->(klass) { nil } }, # non-effective, just testing that it'll accept it
     { proc_scopes: ->(klass) { klass } }, # non-effective, just testing that it'll accept it
+    { reading_proc_scopes: ->(klass) { nil } }, # non-effective
+    { reading_proc_scopes: ->(klass) { klass.order(id: :desc) } },
+    { deletion_proc_scopes: ->(klass) { nil } }, # non-effective
+    { deletion_proc_scopes: ->(klass) { klass.order(id: :desc) } },
+    { nullification_proc_scopes: ->(klass) { nil } }, # non-effective
+    { nullification_proc_scopes: ->(klass) { klass.order(id: :desc) } },
     {
       db_delete_all_wrapper: ->(deleter, block) {
         ActiveRecord::Base.transaction do
@@ -1581,6 +1587,110 @@ RSpec.describe BulkDependencyEraser::Manager do
             4 => {:ctid=>"(2,4)"},
             5 => {:ctid=>"(2,5)"},
             6 => {:ctid=>"(2,6)"}
+          }
+        )
+      end
+    end
+  end
+
+
+  context 'using scope opts' do
+    context 'with non-existent proc_scopes filter' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { proc_scopes: ->(query) { query.where(id: User.maximum(:id) + 1)} }
+      end
+
+      it "should execute successfully", :aggregate_failures do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(0)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should not populate the deletion_list' do
+        do_request
+        expect(subject.deletion_list).to be_empty
+      end
+    end
+
+    context 'with non-existent reading_proc_scopes filter' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { reading_proc_scopes: ->(query) { query.where(id: User.maximum(:id) + 1)} }
+      end
+
+      it "should execute successfully", :aggregate_failures do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(0)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should not populate the deletion_list' do
+        do_request
+        expect(subject.deletion_list).to be_empty
+      end
+    end
+
+    context 'with non-existent deletion_proc_scopes filter' do
+      let(:model_klass) { User }
+      let(:query) { model_klass }
+      let(:opts) do
+        { deletion_proc_scopes: ->(query) { query.where(id: User.maximum(:id) + 1)} }
+      end
+
+      it "should execute successfully", :aggregate_failures do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(0)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should populate the deletion_list' do
+        do_request
+        expect(subject.deletion_list).not_to be_empty
+      end
+    end
+
+    context 'with non-existent nullification_proc_scopes filter' do
+      let(:model_klass) { User }
+      let!(:user) { FactoryBot.create(:user) }
+      let!(:rented_vehicles) { FactoryBot.create_list(:vehicle, 3, rented_by_id: user.id) }
+      let(:query) { model_klass.where(id: user.id) }
+      let(:opts) do
+        { nullification_proc_scopes: ->(query) { query.where(id: Vehicle.maximum(:id) + 1)} }
+      end
+
+      it "should execute successfully", :aggregate_failures do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.not_to change { Vehicle.where(id: rented_vehicles.map(&:id)).pluck(:rented_by_id) }
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should populate the nullification_list' do
+        do_request
+
+        expect(subject.nullification_list).to match(
+          {
+            "Vehicle" => {
+              "rented_by_id" => match_array(rented_vehicles.map(&:id))
+            }
           }
         )
       end

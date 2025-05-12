@@ -41,13 +41,16 @@ module BulkDependencyEraser
       disable_delete_batching: nil,
       # Applied to all queries. Useful for taking advantage of specific indexes
       # - not indexed by klass name. Proc would handle the logic for that.
-      # - 3rd, and lowest, priority of scopes
+      # - 4th, and lowest, priority of scopes
       # - accepts rails query as parameter
       # - return nil if no applicable scope.
       proc_scopes: self::DEFAULT_SCOPE_WRAPPER,
       # Applied to all queries. Useful for taking advantage of specific indexes
-      # - 2nd highest priority of scopes
+      # - 3rd highest priority of scopes
       proc_scopes_per_class_name: {},
+      # Applied to all queries. Useful for taking advantage of specific indexes
+      # - 2nd highest priority of scopes
+      deletion_proc_scopes: self::DEFAULT_SCOPE_WRAPPER,
       # Applied to deletion queries
       # - 1st priority of scopes
       deletion_proc_scopes_per_class_name: {},
@@ -103,11 +106,18 @@ module BulkDependencyEraser
 
     def custom_scope_for_query(query)
       klass = query.klass
+
       if opts_c.deletion_proc_scopes_per_class_name.key?(klass.name)
-        opts_c.deletion_proc_scopes_per_class_name[klass.name].call(query)
-      else
-        super(query)
+        result = opts_c.deletion_proc_scopes_per_class_name[klass.name].call(query)
+        return result unless result.nil?
       end
+
+      if opts_c.deletion_proc_scopes
+        result = opts_c.deletion_proc_scopes.call(query)
+        return result unless result.nil?
+      end
+
+      return super(query)
     end
 
     def batch_size

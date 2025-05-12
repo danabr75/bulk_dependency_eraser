@@ -222,6 +222,53 @@ opts: { disable_batch_ordering_for_klasses: [<String>, ...] } # Will only remove
 opts: { use_pg_system_column_ctid: true }
 ```
 
+### Option: Query Scoping
+```
+# Can add additional query filters/scopes.
+# - Useful when taking advantage of indexes.
+# - Once a scope is applied, and returns a ActiveRecord::Relation, no further scopes are applied
+# - scopes accept a lambda with a ActiveRecord::Relation param. Returns either nil (ignores scope and continues other scope-checks) or ActiveRecord::Relation (scope applied)
+# Global Scopes (across reading, deleting, nullifying)
+opts: {
+  # 4th priority (applied to all queries)
+  proc_scopes: ->(query) { query.where(tenant_id: "...") }
+  # 3rd priority (applied when klass name matches query's klass)
+  proc_scopes_per_class_name: {
+    <klass name>: ->(query) { query.where(tenant_id: "...") }
+  }
+}
+
+# Reading Only
+opts: {
+  # 2nd priority
+  reading_proc_scopes: ->(query) { query.where(tenant_id: "...") }
+  # 1st priority
+  reading_proc_scopes_per_class_name: {
+    <klass name>: ->(query) { query.where(tenant_id: "...") }
+  }
+}
+
+# Deleting Only
+opts: {
+  # 2nd priority
+  deletion_proc_scopes: ->(query) { query.where(tenant_id: "...") }
+  # 1st priority
+  deletion_proc_scopes_per_class_name: {
+    <klass name>: ->(query) { query.where(tenant_id: "...") }
+  }
+}
+
+# Nullification Only
+opts: {
+  # 2nd priority
+  nullification_proc_scopes: ->(query) { query.where(tenant_id: "...") }
+  # 1st priority
+  nullification_proc_scopes_per_class_name: {
+    <klass name>: ->(query) { query.where(tenant_id: "...") }
+  }
+}
+```
+
 
 ### TODO: Option: Instantiation
 - Feature currently is in development
