@@ -192,12 +192,16 @@ module BulkDependencyEraser
         # If the query has a limit, then we don't want to clobber with batching.
         if batching_disabled? || !query.where({}).limit_value.nil?
           # query without batching
-          query_results = query.pluck(*columns)
+          # query_results = query.pluck(*columns)
+          query_results = query.pluck(*columns.collect{ |c| "#{query.klass.table_name}.#{c}"})
         elsif opts_c.disable_batch_ordering || opts_c.disable_batch_ordering_for_klasses.include?(current_klass_name)
           # query with orderless batching
           offset = 0
           loop do
-            new_query_results = query.offset(offset).limit(batch_size).pluck(*columns)
+            # This use-case didn't work. Rails converts the query filter to a left_outer_join, and can't then pull the CTID column in some use-cases
+            # new_query_results = query.offset(offset).limit(batch_size).pluck(*columns)
+            # This implementation does work. Prevents rails ORM from converting to a join
+            new_query_results = query.offset(offset).limit(batch_size).pluck(*columns.collect{ |c| "#{query.klass.table_name}.#{c}"})
             query_results += new_query_results
 
             break if new_query_results.size < batch_size
@@ -208,7 +212,8 @@ module BulkDependencyEraser
         else
           # query with ordered batching
           query.in_batches(of: batch_size) do |subset_query|
-            query_results += subset_query.pluck(*columns)
+            # query_results += subset_query.pluck(*columns)
+            query_results += subset_query.pluck(*columns.collect{ |c| "#{query.klass.table_name}.#{c}"})
           end
         end
       end
