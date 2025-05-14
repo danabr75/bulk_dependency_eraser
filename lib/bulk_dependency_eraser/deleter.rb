@@ -54,6 +54,7 @@ module BulkDependencyEraser
       # Applied to deletion queries
       # - 1st priority of scopes
       deletion_proc_scopes_per_class_name: {},
+      use_ctid_over_primary_key: false,
     }.freeze
 
     def initialize class_names_and_ids: {}, additional_identifiers_by_id: {}, opts: {}
@@ -140,7 +141,13 @@ module BulkDependencyEraser
         # Get column-names/keys of any additional identifer columns
         detected_additional_identifier_columns = additional_identifiers&.values&.flat_map(&:keys)&.uniq || []
         delete_in_db do
-          deletion_query = query.where(id: ids)
+          deletion_query = query
+          if opts_c.use_ctid_over_primary_key && detected_additional_identifier_columns.include?('ctid')
+            # Do nothing, query will be deleted via ctid
+          else
+            deletion_query = deletion_query.where(id: ids)
+          end
+
           # Apply any additional query identifiers (i.e. :ctid column)
           detected_additional_identifier_columns.each do |column|
             deletion_query = deletion_query.where(column => additional_identifiers.values.pluck(column))
@@ -160,7 +167,13 @@ module BulkDependencyEraser
           # Get column-names/keys of any additional identifer columns
           detected_additional_identifier_columns = additional_identifiers_subset&.values&.flat_map(&:keys)&.uniq || []
           delete_in_db do
-            deletion_query = query.where(id: ids_subset)
+            deletion_query = query
+            if opts_c.use_ctid_over_primary_key && detected_additional_identifier_columns.include?('ctid')
+              # Do nothing, query will be deleted via ctid
+            else
+              deletion_query = deletion_query.where(id: ids_subset)
+            end
+
             # Apply any additional query identifiers (i.e. :ctid column)
             detected_additional_identifier_columns.each do |column|
               deletion_query = deletion_query.where(column => additional_identifiers_subset.values.pluck(column))

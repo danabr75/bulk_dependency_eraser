@@ -101,9 +101,8 @@ RSpec.describe BulkDependencyEraser::Manager do
         end
       }
     },
-    {
-      use_pg_system_column_ctid: true
-    }
+    { use_pg_system_column_ctid: true },
+    { use_pg_system_column_ctid: true, use_ctid_over_primary_key: true }
   ]
   options.each do |option_set|
     context "with options: #{option_set.nil? ? 'nil' : option_set}" do
