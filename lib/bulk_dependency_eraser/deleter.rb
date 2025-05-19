@@ -146,30 +146,19 @@ module BulkDependencyEraser
       detected_additional_identifier_columns = additional_identifiers&.values&.flat_map(&:keys)&.uniq || []
 
       if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
-        partioned_tables = additional_identifiers.values.pluck('tableoid::regclass').uniq
+        deletable_partioned_tables_by_ctids = additional_identifiers.values.pluck('tableoid::regclass').uniq
       end
 
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
         # Delete by partioned CTIDs
-        if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
+        if deletable_partioned_tables_by_ctids
           puts "Deleting via CTID and table partitions" if opts_c.verbose
-          partioned_tables.each do |table_partition|
+          deletable_partioned_tables_by_ctids.each do |table_partition|
             identifiers_by_partition = additional_identifiers.filter { |id, identifiers| identifiers['tableoid::regclass'] == table_partition }
             ctids = identifiers_by_partition.values.pluck('ctid')
-            delete_in_db do
-              sql = <<~SQL
-                DELETE FROM #{table_partition}
-                WHERE ctid IN (#{ctids.map { |c| "'#{c}'" }.join(', ')});
-              SQL
-              # Due to the way we've mocked/aliased the partition table in this gem test, we need to also add the partition name as a where clause.
-              if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser'
-                sql.sub!(/;\s*$/, "") # remove terminating semicolon
-                sql << " AND tableoid = '#{table_partition}';"
-              end
-              deleted_count = klass.connection.delete(sql)
-              [deleted_count, sql, identifiers_by_partition.keys, identifiers_by_partition]
-            end
+            ids = identifiers_by_partition.values.pluck('id')
+            deletion_by_partitioned_ctids(query, ids, ctids, table_partition, identifiers_by_partition)
           end
         else
           delete_in_db do
@@ -195,29 +184,15 @@ module BulkDependencyEraser
         end
       else
         puts "Deleting with batching" if opts_c.verbose
-        if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
+        if deletable_partioned_tables_by_ctids
           puts "Deleting via CTID and table partitions" if opts_c.verbose
-          partioned_tables.each do |table_partition|
+          deletable_partioned_tables_by_ctids.each do |table_partition|
             identifiers_by_partition = additional_identifiers.filter { |id, identifiers| identifiers['tableoid::regclass'] == table_partition }
             ids = identifiers_by_partition.keys
             ids.each_slice(batch_size) do |ids_subset|
               additional_identifiers_subset = identifiers_by_partition.slice(*ids_subset)
               ctids = additional_identifiers_subset.values.pluck('ctid')
-              delete_in_db do
-                sql = <<~SQL
-                  DELETE FROM #{table_partition}
-                  WHERE ctid IN (#{ctids.map { |c| "'#{c}'" }.join(', ')});
-                SQL
-
-                # Due to the way we've mocked/aliased the partition table in this gem test, we need to also add the partition name as a where clause.
-                if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser'
-                  sql.sub!(/;\s*$/, "") # remove terminating semicolon
-                  sql << " AND tableoid = '#{table_partition}';"
-                end
-
-                deleted_count = klass.connection.delete(sql)
-                [deleted_count, sql, ids_subset, additional_identifiers_subset]
-              end
+              deletion_by_partitioned_ctids(query, ids_subset, ctids, table_partition, identifiers_by_partition)
             end
           end
         else
@@ -248,6 +223,29 @@ module BulkDependencyEraser
             end
           end
         end
+      end
+    end
+
+    def deletion_by_partitioned_ctids query, ids, ctids, partition_table_name, additional_identifiers
+      delete_in_db do
+        where_clause_sql = <<~SQL
+          ctid IN (#{ctids.map { |c| "'#{c}'" }.join(', ')})
+        SQL
+
+        deletion_sql = <<~SQL
+          DELETE FROM #{partition_table_name}
+          WHERE #{where_clause_sql};
+        SQL
+
+        # Due to the way we've mocked/aliased the partition table in this gem test, we need to also add the partition name as a where clause.
+        if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser'
+          deletion_sql.sub!(/;\s*$/, "") # remove terminating semicolon
+          deletion_sql << " AND tableoid = '#{partition_table_name}';"
+        end
+
+        deleted_count = query.klass.connection.delete(deletion_sql)
+        selector_query = query.where(Arel.sql(where_clause_sql))
+        [deleted_count, selector_query, ids, additional_identifiers]
       end
     end
 
