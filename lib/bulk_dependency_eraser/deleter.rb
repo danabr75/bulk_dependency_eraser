@@ -55,6 +55,10 @@ module BulkDependencyEraser
       # - 1st priority of scopes
       deletion_proc_scopes_per_class_name: {},
       use_ctid_over_primary_key: false,
+      # Using PG system column CTID can result in a 10x deletion speed increase
+      # - is used in combination with the primary key column to ensure CTID hasn't changed.
+      use_pg_system_column_ctid: false,
+      delete_ctids_by_partions: false,
     }.freeze
 
     def initialize class_names_and_ids: {}, additional_identifiers_by_id: {}, opts: {}
@@ -131,61 +135,117 @@ module BulkDependencyEraser
     end
 
     # @param additional_identifiers [Hash] can be nil, if chosen to be so by implementers
+    # - Key: <ID> (primary_key)
+    # - Val: Hash of column/value pairings
     def delete_by_klass_and_ids(klass, ids, additional_identifiers:)
       puts "Deleting #{klass.name}'s IDs: #{ids}" if opts_c.verbose
       query = klass.unscoped
       query = custom_scope_for_query(query)
 
+      # Get column-names/keys of any additional identifer columns
+      detected_additional_identifier_columns = additional_identifiers&.values&.flat_map(&:keys)&.uniq || []
+
+      if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
+        partioned_tables = additional_identifiers.values.pluck('tableoid::regclass').uniq
+      end
+
       if batching_disabled?
         puts "Deleting without batching" if opts_c.verbose
-        # Get column-names/keys of any additional identifer columns
-        detected_additional_identifier_columns = additional_identifiers&.values&.flat_map(&:keys)&.uniq || []
-        delete_in_db do
-          deletion_query = query
-          if opts_c.use_ctid_over_primary_key && detected_additional_identifier_columns.include?('ctid')
-            # Do nothing, query will be deleted via ctid
-          else
-            deletion_query = deletion_query.where(id: ids)
+        # Delete by partioned CTIDs
+        if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
+          puts "Deleting via CTID and table partitions" if opts_c.verbose
+          partioned_tables.each do |table_partition|
+            identifiers_by_partition = additional_identifiers.filter { |id, identifiers| identifiers['tableoid::regclass'] == table_partition }
+            ctids = identifiers_by_partition.values.pluck('ctid')
+            delete_in_db do
+              sql = <<~SQL
+                DELETE FROM #{table_partition}
+                WHERE ctid IN (#{ctids.map { |c| "'#{c}'" }.join(', ')});
+              SQL
+              # Due to the way we've mocked/aliased the partition table in this gem test, we need to also add the partition name as a where clause.
+              if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser'
+                sql.sub!(/;\s*$/, "") # remove terminating semicolon
+                sql << " AND tableoid = '#{table_partition}';"
+              end
+              deleted_count = klass.connection.delete(sql)
+              [deleted_count, sql, identifiers_by_partition.keys, identifiers_by_partition]
+            end
           end
-
-          # Apply any additional query identifiers (i.e. :ctid column)
-          detected_additional_identifier_columns.each do |column|
-            deletion_query = deletion_query.where(column => additional_identifiers.values.pluck(column))
-          end
-
-          # Perform Deletion
-          deletion_result = deletion_query.delete_all
-          # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
-          # and have access to these objects in their proc.
-            # - query can give them access to the klass and table_name
-          [deletion_result, query, ids, additional_identifiers]
-        end
-      else
-        puts "Deleting with batching" if opts_c.verbose
-        ids.each_slice(batch_size) do |ids_subset|
-          additional_identifiers_subset = additional_identifiers&.slice(*ids_subset)
-          # Get column-names/keys of any additional identifer columns
-          detected_additional_identifier_columns = additional_identifiers_subset&.values&.flat_map(&:keys)&.uniq || []
+        else
           delete_in_db do
             deletion_query = query
             if opts_c.use_ctid_over_primary_key && detected_additional_identifier_columns.include?('ctid')
               # Do nothing, query will be deleted via ctid
             else
-              deletion_query = deletion_query.where(id: ids_subset)
+              deletion_query = deletion_query.where(id: ids)
             end
 
             # Apply any additional query identifiers (i.e. :ctid column)
             detected_additional_identifier_columns.each do |column|
-              deletion_query = deletion_query.where(column => additional_identifiers_subset.values.pluck(column))
+              deletion_query = deletion_query.where(column => additional_identifiers.values.pluck(column))
             end
 
             # Perform Deletion
             deletion_result = deletion_query.delete_all
-
             # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
             # and have access to these objects in their proc.
-            # - query can give them access to the klass and table_name
-            [deletion_result, query, ids_subset, additional_identifiers_subset]
+              # - query can give them access to the klass and table_name
+            [deletion_result, query, ids, additional_identifiers]
+          end
+        end
+      else
+        puts "Deleting with batching" if opts_c.verbose
+        if opts_c.use_pg_system_column_ctid && opts_c.delete_ctids_by_partions && (detected_additional_identifier_columns & ['ctid', 'tableoid::regclass']).size == 2
+          puts "Deleting via CTID and table partitions" if opts_c.verbose
+          partioned_tables.each do |table_partition|
+            identifiers_by_partition = additional_identifiers.filter { |id, identifiers| identifiers['tableoid::regclass'] == table_partition }
+            ids = identifiers_by_partition.keys
+            ids.each_slice(batch_size) do |ids_subset|
+              additional_identifiers_subset = identifiers_by_partition.slice(*ids_subset)
+              ctids = additional_identifiers_subset.values.pluck('ctid')
+              delete_in_db do
+                sql = <<~SQL
+                  DELETE FROM #{table_partition}
+                  WHERE ctid IN (#{ctids.map { |c| "'#{c}'" }.join(', ')});
+                SQL
+
+                # Due to the way we've mocked/aliased the partition table in this gem test, we need to also add the partition name as a where clause.
+                if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser'
+                  sql.sub!(/;\s*$/, "") # remove terminating semicolon
+                  sql << " AND tableoid = '#{table_partition}';"
+                end
+
+                deleted_count = klass.connection.delete(sql)
+                [deleted_count, sql, ids_subset, additional_identifiers_subset]
+              end
+            end
+          end
+        else
+          ids.each_slice(batch_size) do |ids_subset|
+            additional_identifiers_subset = additional_identifiers&.slice(*ids_subset)
+            # Get column-names/keys of any additional identifer columns
+            detected_additional_identifier_columns = additional_identifiers_subset&.values&.flat_map(&:keys)&.uniq || []
+            delete_in_db do
+              deletion_query = query
+              if opts_c.use_ctid_over_primary_key && detected_additional_identifier_columns.include?('ctid')
+                # Do nothing, query will be deleted via ctid
+              else
+                deletion_query = deletion_query.where(id: ids_subset)
+              end
+
+              # Apply any additional query identifiers (i.e. :ctid column)
+              detected_additional_identifier_columns.each do |column|
+                deletion_query = deletion_query.where(column => additional_identifiers_subset.values.pluck(column))
+              end
+
+              # Perform Deletion
+              deletion_result = deletion_query.delete_all
+
+              # Returning the following data in the event that the gem-implementer wants to insert their own db_delete_wrapper proc
+              # and have access to these objects in their proc.
+              # - query can give them access to the klass and table_name
+              [deletion_result, query, ids_subset, additional_identifiers_subset]
+            end
           end
         end
       end

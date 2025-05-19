@@ -1,5 +1,6 @@
 ---
 vehicles_001:
+  tableoid: 'vehicles'
   ctid: '(6,1)'
   id: 1
   model: "Caraven"
@@ -7,6 +8,7 @@ vehicles_001:
   brand_id: 4
   owner_id: 1
 vehicles_002:
+  tableoid: 'vehicles'
   ctid: '(6,2)'
   id: 2
   model: "Roadster"
@@ -14,6 +16,7 @@ vehicles_002:
   brand_id: 5
   owner_id: 1
 vehicles_003:
+  tableoid: 'vehicles'
   ctid: '(6,3)'
   id: 3
   model: "Firebird"
@@ -21,6 +24,7 @@ vehicles_003:
   brand_id: 1
   owner_id: 1
 vehicles_004:
+  tableoid: 'vehicles'
   ctid: '(6,4)'
   id: 4
   model: "Rebel"
@@ -28,6 +32,7 @@ vehicles_004:
   brand_id: 2
   owner_id: 1
 vehicles_005:
+  tableoid: 'vehicles'
   ctid: '(6,5)'
   id: 5
   model: "Civic"
@@ -35,6 +40,7 @@ vehicles_005:
   brand_id: 2
   owner_id:
 vehicles_006:
+  tableoid: 'vehicles'
   ctid: '(6,6)'
   id: 6
   model: "CRV"

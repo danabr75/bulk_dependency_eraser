@@ -58,6 +58,7 @@ module BulkDependencyEraser
       # Using PG system column CTID can result in a 10x deletion speed increase
       # - is used in combination with the primary key column to ensure CTID hasn't changed.
       use_pg_system_column_ctid: false,
+      delete_ctids_by_partions: false,
     }.freeze
 
     # write access so that these can be edited in-place by end-users who might need to manually adjust deletion order.
@@ -177,8 +178,14 @@ module BulkDependencyEraser
       end
 
       # Only pluck CTID if we're plucking column :id (the only primary key supported)
-      if columns == [:id] && opts_c.use_pg_system_column_ctid && skip_ctid_check == false
-        columns << :ctid
+      if columns == [:id] && skip_ctid_check == false
+        columns << :ctid if opts_c.use_pg_system_column_ctid
+        columns << 'tableoid::regclass' if opts_c.delete_ctids_by_partions # to support partioned tables
+      end
+
+      # Gem test ENV only! Swap out SQL column value with SQLite3 mocked, compatible value
+      if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser' && columns.include?('tableoid::regclass')
+        columns[columns.index('tableoid::regclass')] = 'tableoid'
       end
 
       set_current_klass_name(query)
@@ -221,6 +228,11 @@ module BulkDependencyEraser
       # Early exit if we only plucked one column.
       # - query_results would just be an array of IDs
       return [query_results, nil] if columns.count == 1
+
+      # Gem test ENV only! Swap out SQL column value with SQLite3 mocked, compatible value
+      if ENV['TEST_GEM_ENV'] == 'bulk_dependency_eraser' && columns.include?('tableoid')
+        columns[columns.index('tableoid')] = 'tableoid::regclass'
+      end
 
       transposed_results = query_results.transpose
 

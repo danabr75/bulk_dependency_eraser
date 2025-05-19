@@ -7,71 +7,79 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
 
   create_table "users", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "email"
     t.string "first_name"
     t.string "last_name"
     t.boolean "active"
-    t.index 'ctid', unique: true
+    # t.index ["ctid", "tableoid"], name: "users_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "user_is_friends_withs", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.bigint "user_id"
     t.bigint "friends_with_id"
     t.index ["user_id", "friends_with_id"], name: "index_user_friends_with"
     t.index ["friends_with_id", "user_id"], name: "index_friend_with_has_users"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "user_is_friends_withs_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "registrations", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.boolean "active"
     t.bigint "registerable_id"
     t.string "registerable_type"
     t.index ["registerable_type", "registerable_id"], name: "index_registrations_on_registerable_type_and_registerable_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "registrations_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "nullify_registrations", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.boolean "active"
     t.bigint "registerable_id"
     t.string "registerable_type"
     t.index ["registerable_type", "registerable_id"], name: "index_nulfy_registrations_on_reg_type_and_reg_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "nullify_registrations_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "messages", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.text "message"
     t.bigint "user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "messages_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "messages", "users"
 
   create_table "texts", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.text "text"
     t.bigint "user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "texts_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "texts", "users"
 
   create_table "locations", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "name"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "locations_mock_ctid_and_partion_name", unique: true
   end
 
   # # JOIN TABLE WITHOUT ID COLUMN
   # # - used to detect error if dependent
   create_table "users_locations", id: false, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.bigint "location_id"
     t.bigint "user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "users_locations_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "users_locations", "locations"
@@ -79,18 +87,20 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
 
   create_table "brands", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "name"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "brands_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "vehicles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "model"
     t.string "type"
     t.bigint "brand_id"
     t.bigint "owner_id"
     t.bigint "rented_by_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "vehicles_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "vehicles", "brands"
@@ -99,12 +109,13 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
 
   create_table "users_vehicles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.bigint "user_id"
     t.bigint "vehicle_id"
     t.index ["user_id"], name: "index_users_vehicles_on_user_id"
     t.index ["vehicle_id"], name: "index_users_vehicles_on_vehicle_id"
     t.index ["user_id", "vehicle_id"], name: "index_users_vehicles_on_user_id_and_vehicle_id", unique: true
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "users_vehicles_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "users_vehicles", "users"
@@ -112,66 +123,73 @@ ActiveRecord::Schema.define(version: 2020_05_08_150547) do
 
   create_table "parts", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "name"
     t.bigint "partable_id"
     t.string "partable_type"
     t.index ["partable_type", "partable_id"], name: "index_parts_on_partable_type_and_partable_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "parts_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "logos", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "brand_name"
     t.bigint "brand_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "logos_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "logos", "brands"
 
   create_table "addresses", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.string "street"
     t.bigint "user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "addresses_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "addresses", "users"
 
   create_table "profiles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.bigint "user_id"
     t.text "bio"
     t.index ["user_id"], name: "index_profiles_on_user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "profiles_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "profiles", "users"
 
   create_table "nullification_profiles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.bigint "user_id"
     t.text "bio"
     t.index ["user_id"], name: "index_nullification_profiles_on_user_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "nullification_profiles_mock_ctid_and_partion_name", unique: true
   end
 
   add_foreign_key "nullification_profiles", "users"
 
   create_table "poly_profiles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.text "bio"
     t.bigint "profilable_id"
     t.string "profilable_type"
     t.index ["profilable_type", "profilable_id"], name: "index_poly_profiles_on_profilable_type_and_profilable_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "poly_profiles_mock_ctid_and_partion_name", unique: true
   end
 
   create_table "nullify_poly_profiles", id: :integer, force: :cascade do |t|
     t.string "ctid"
+    t.string "tableoid"
     t.text "bio"
     t.bigint "profilable_id"
     t.string "profilable_type"
     t.index ["profilable_type", "profilable_id"], name: "index_nullify_poly_profiles_on_profilable_type_and_profilable_id"
-    t.index 'ctid', unique: true
+    t.index ["ctid", "tableoid"], name: "nullify_poly_profiles_mock_ctid_and_partion_name", unique: true
   end
 end

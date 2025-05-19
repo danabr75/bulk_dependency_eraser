@@ -198,9 +198,12 @@ opts: { batch_size: <Integer> } # will be applied to all actions (reading/deleti
 
 opts: { read_batch_size: <Integer> }    # will be applied to reading (and will override :batch_size for reading)
 
-opts: { delete_batch_size: <Integer> }  # will be applied to reading (and will override :batch_size for deleting)
+opts: { delete_batch_size: <Integer> }  # will be applied to deleting (and will override :batch_size for deleting)
 
-opts: { nullify_batch_size: <Integer> } # will be applied to reading (and will override :batch_size for deleting)
+opts: { nullify_batch_size: <Integer> } # will be applied to nullifying (and will override :batch_size for deleting)
+
+opts: { disable_batching: <Boolean> } #  Disable all batching in reading/deleting/nullifying
+
 ```
 
 ### Option: Batching (reading) without ordering
@@ -220,6 +223,12 @@ opts: { disable_batch_ordering_for_klasses: [<String>, ...] } # Will only remove
 #   - Since we're still deleting by ID, there's no chance that the wrong record will be deleted. Just a small chance we may miss a record deletion.
 # - It's your responsibility to know what you're doing if you enable this option!
 opts: { use_pg_system_column_ctid: true }
+# IF partitioning is implemented, you MUST use this option (delete_ctids_by_partions) as well!
+# - to do otherwise would result in unintended records being deleted. CTIDs are not unique across partitions!
+# - somewhat experimental! We've had to do some mocks, due to using SQLite3 for testing, but it should be valid.
+opts: { delete_ctids_by_partions: true, use_pg_system_column_ctid: true }
+
+# WARNING: Write your own tests that cover usage of CTID deletion!
 ```
 
 ### Option: Query Scoping

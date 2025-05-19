@@ -1,20 +1,24 @@
 ---
 users_vehicles_001:
+  tableoid: 'users_vehicles'
   ctid: '(5,1)'
   id: 1
   user_id: 1
   vehicle_id: 1
 users_vehicles_002:
+  tableoid: 'users_vehicles'
   ctid: '(5,2)'
   id: 2
   user_id: 2
   vehicle_id: 1
 users_vehicles_003:
+  tableoid: 'users_vehicles'
   ctid: '(5,3)'
   id: 3
   user_id: 1
   vehicle_id: 2
 users_vehicles_004:
+  tableoid: 'users_vehicles'
   ctid: '(5,4)'
   id: 4
   user_id: 2

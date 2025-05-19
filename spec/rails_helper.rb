@@ -1,4 +1,6 @@
 ENV['RAILS_ENV'] ||= 'test'
+ENV['TEST_GEM_ENV'] ||= 'bulk_dependency_eraser' # to differentiate from gem-implementer's test ENV
+
 require 'spec_helper'
 require File.expand_path('../../test/test_app/config/environment', __FILE__)
 require 'rspec/rails'
@@ -46,6 +48,12 @@ if Rails.configuration.database_configuration[Rails.env]['database'] == ':memory
   ActiveRecord::Schema.verbose = false
   load "#{Rails.root}/db/schema.rb"
 end
+
+# Run any pending migrations before tests
+ActiveRecord::MigrationContext.new(
+  [File.expand_path('../../test/test_app/db/migrate', __FILE__)], # migrator paths - ActiveRecord::Migrator.migrations_paths
+  ActiveRecord::SchemaMigration
+).migrate
 
 # Load in Fixtures in Rails console (^ Run the load schema commands as well)
 # require "rake"

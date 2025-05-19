@@ -102,7 +102,9 @@ RSpec.describe BulkDependencyEraser::Manager do
       }
     },
     { use_pg_system_column_ctid: true },
-    { use_pg_system_column_ctid: true, use_ctid_over_primary_key: true }
+    { use_pg_system_column_ctid: true, delete_ctids_by_partions: true },
+    # { use_pg_system_column_ctid: true, use_ctid_over_primary_key: true }, # this would fail, because it would delete more users (partitioned) than expected.
+    { use_pg_system_column_ctid: true, use_ctid_over_primary_key: true, delete_ctids_by_partions: true },
   ]
   options.each do |option_set|
     context "with options: #{option_set.nil? ? 'nil' : option_set}" do
@@ -1500,13 +1502,13 @@ RSpec.describe BulkDependencyEraser::Manager do
 
 
   context 'using opts: { use_pg_system_column_ctid: true }' do
-    context 'default id/ctid pairings' do
-      let(:model_klass) { User }
-      let(:query) { model_klass }
-      let(:opts) do
-        { use_pg_system_column_ctid: true }
-      end
+    let(:model_klass) { User }
+    let(:query) { model_klass }
+    let(:opts) do
+      { use_pg_system_column_ctid: true }
+    end
 
+    context 'default id/ctid pairings' do
       it "should execute successfully" do
         aggregate_failures do
           expect {
@@ -1528,7 +1530,7 @@ RSpec.describe BulkDependencyEraser::Manager do
             1 => { 'ctid' => "(2,1)" },
             2 => { 'ctid' => "(2,2)" },
             3 => { 'ctid' => "(2,3)" },
-            4 => { 'ctid' => "(2,4)" },
+            4 => { 'ctid' => "(2,1)" },
             5 => { 'ctid' => "(2,5)" },
             6 => { 'ctid' => "(2,6)" }
           }
@@ -1537,7 +1539,7 @@ RSpec.describe BulkDependencyEraser::Manager do
           subject.deletion_list_with_additional_identifiers['Motorcycle']
         ).to eq(
           {
-            4 => { 'ctid' =>"(6,4)"}
+            4 => { 'ctid' =>"(6,4)" }
           }
         )
         expect(
@@ -1553,11 +1555,6 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
 
     context 'with changed CTID value on User post-build and pre-delete' do
-      let(:model_klass) { User }
-      let(:query) { model_klass }
-      let(:opts) do
-        { use_pg_system_column_ctid: true }
-      end
       let!(:persisted_user) {User.find_by_email('test@test.test')}
       let(:do_build) { super() && persisted_user.update!(ctid: '(2,100)') }
 
@@ -1583,7 +1580,7 @@ RSpec.describe BulkDependencyEraser::Manager do
             1 => { 'ctid' => "(2,1)" },
             2 => { 'ctid' => "(2,2)" },
             3 => { 'ctid' => "(2,3)" },
-            4 => { 'ctid' => "(2,4)" },
+            4 => { 'ctid' => "(2,1)" },
             5 => { 'ctid' => "(2,5)" },
             6 => { 'ctid' => "(2,6)" }
           }
@@ -1592,12 +1589,6 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
 
     context 'with cleared CTID values post-build and pre-delete' do
-      let(:model_klass) { User }
-      let(:query) { model_klass }
-      let(:opts) do
-        { use_pg_system_column_ctid: true }
-      end
-
       it "should execute and still delete all users" do
         expect(do_build).to be_truthy
         subject.deletion_list_with_additional_identifiers.clear
@@ -1612,6 +1603,211 @@ RSpec.describe BulkDependencyEraser::Manager do
     end
   end
 
+  context 'using opts: { use_pg_system_column_ctid: true, delete_ctids_by_partions: true, use_ctid_over_primary_key: true }' do
+    let(:model_klass) { User }
+    let(:query) { model_klass }
+    let(:opts) do
+      { use_pg_system_column_ctid: true, delete_ctids_by_partions: true, use_ctid_over_primary_key: true }
+    end
+
+    context 'default id/ctid pairings' do
+      it "should execute successfully" do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+           .and change(Motorcycle, :count).by(-1)
+           .and change(Car, :count).by(-3)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_request
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users_alias' },
+            2 => { 'ctid' => "(2,2)", 'tableoid::regclass' => 'users_alias' },
+            3 => { 'ctid' => "(2,3)", 'tableoid::regclass' => 'users_alias' },
+            4 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users' },
+            5 => { 'ctid' => "(2,5)", 'tableoid::regclass' => 'users' },
+            6 => { 'ctid' => "(2,6)", 'tableoid::regclass' => 'users' }
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Motorcycle']
+        ).to eq(
+          {
+            4 => { 'ctid' =>"(6,4)", 'tableoid::regclass' => 'vehicles' }
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Car']
+        ).to eq(
+          {
+            1 => { 'ctid' =>"(6,1)", 'tableoid::regclass' => 'vehicles' },
+            2 => { 'ctid' =>"(6,2)", 'tableoid::regclass' => 'vehicles' },
+            3 => { 'ctid' =>"(6,3)", 'tableoid::regclass' => 'vehicles' }
+          }
+        )
+      end
+    end
+
+    context 'with changed CTID value on User post-build and pre-delete' do
+      let!(:persisted_user) {User.find_by_email('test@test.test')}
+      let(:do_build) { super() && persisted_user.update!(ctid: '(2,100)') }
+
+      it "should execute and not delete User with changed CTID" do
+        aggregate_failures do
+          expect(do_build).to be_truthy
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-5)
+
+          expect(subject.errors).to be_empty
+          expect(User.exists?(persisted_user.id)).to be_truthy
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_build
+        do_request
+        expect(subject.errors).to be_empty
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users_alias' },
+            2 => { 'ctid' => "(2,2)", 'tableoid::regclass' => 'users_alias' },
+            3 => { 'ctid' => "(2,3)", 'tableoid::regclass' => 'users_alias' },
+            4 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users' },
+            5 => { 'ctid' => "(2,5)", 'tableoid::regclass' => 'users' },
+            6 => { 'ctid' => "(2,6)", 'tableoid::regclass' => 'users' }
+          }
+        )
+      end
+    end
+
+    context 'with cleared CTID values post-build and pre-delete' do
+      it "should execute and still delete all users" do
+        expect(do_build).to be_truthy
+        subject.deletion_list_with_additional_identifiers.clear
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+
+          expect(subject.errors).to be_empty
+        end
+      end
+    end
+  end
+
+  context 'using opts: { use_pg_system_column_ctid: true, delete_ctids_by_partions: true, use_ctid_over_primary_key: true, disable_batching: true }' do
+    let(:model_klass) { User }
+    let(:query) { model_klass }
+    let(:opts) do
+      { use_pg_system_column_ctid: true, delete_ctids_by_partions: true, use_ctid_over_primary_key: true, disable_batching: true }
+    end
+
+    context 'default id/ctid pairings' do
+      it "should execute successfully" do
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+           .and change(Motorcycle, :count).by(-1)
+           .and change(Car, :count).by(-3)
+
+          expect(subject.errors).to be_empty
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_request
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users_alias' },
+            2 => { 'ctid' => "(2,2)", 'tableoid::regclass' => 'users_alias' },
+            3 => { 'ctid' => "(2,3)", 'tableoid::regclass' => 'users_alias' },
+            4 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users' },
+            5 => { 'ctid' => "(2,5)", 'tableoid::regclass' => 'users' },
+            6 => { 'ctid' => "(2,6)", 'tableoid::regclass' => 'users' }
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Motorcycle']
+        ).to eq(
+          {
+            4 => { 'ctid' =>"(6,4)", 'tableoid::regclass' => 'vehicles' }
+          }
+        )
+        expect(
+          subject.deletion_list_with_additional_identifiers['Car']
+        ).to eq(
+          {
+            1 => { 'ctid' =>"(6,1)", 'tableoid::regclass' => 'vehicles' },
+            2 => { 'ctid' =>"(6,2)", 'tableoid::regclass' => 'vehicles' },
+            3 => { 'ctid' =>"(6,3)", 'tableoid::regclass' => 'vehicles' }
+          }
+        )
+      end
+    end
+
+    context 'with changed CTID value on User post-build and pre-delete' do
+      let!(:persisted_user) {User.find_by_email('test@test.test')}
+      let(:do_build) { super() && persisted_user.update!(ctid: '(2,100)') }
+
+      it "should execute and not delete User with changed CTID" do
+        aggregate_failures do
+          expect(do_build).to be_truthy
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-5)
+
+          expect(subject.errors).to be_empty
+          expect(User.exists?(persisted_user.id)).to be_truthy
+        end 
+      end
+
+      it 'should populate the deletion_list_with_additional_identifiers hash' do
+        do_build
+        do_request
+        expect(subject.errors).to be_empty
+        expect(
+          subject.deletion_list_with_additional_identifiers['User.0']
+        ).to eq(
+          {
+            1 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users_alias' },
+            2 => { 'ctid' => "(2,2)", 'tableoid::regclass' => 'users_alias' },
+            3 => { 'ctid' => "(2,3)", 'tableoid::regclass' => 'users_alias' },
+            4 => { 'ctid' => "(2,1)", 'tableoid::regclass' => 'users' },
+            5 => { 'ctid' => "(2,5)", 'tableoid::regclass' => 'users' },
+            6 => { 'ctid' => "(2,6)", 'tableoid::regclass' => 'users' }
+          }
+        )
+      end
+    end
+
+    context 'with cleared CTID values post-build and pre-delete' do
+      it "should execute and still delete all users" do
+        expect(do_build).to be_truthy
+        subject.deletion_list_with_additional_identifiers.clear
+        aggregate_failures do
+          expect {
+            expect(do_request).to be_truthy
+          }.to change(User, :count).by(-6)
+
+          expect(subject.errors).to be_empty
+        end
+      end
+    end
+  end
 
   context 'using scope opts' do
     context 'with non-existent proc_scopes filter' do

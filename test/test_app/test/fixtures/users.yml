@@ -1,5 +1,6 @@
 ---
 users_001:
+  tableoid: 'users_alias'
   ctid: '(2,1)'
   id: 1
   email: "test@test.test"
@@ -7,6 +8,7 @@ users_001:
   last_name: "Dana"
   active: true
 users_002:
+  tableoid: 'users_alias'
   ctid: '(2,2)'
   id: 2
   email: "test2@test.test"
@@ -14,6 +16,7 @@ users_002:
   last_name: "Frankenstein"
   active: true
 users_003:
+  tableoid: 'users_alias'
   ctid: '(2,3)'
   id: 3
   email: "test3@test.test"
@@ -21,13 +24,15 @@ users_003:
   last_name: "Thomas"
   active: true
 users_004:
-  ctid: '(2,4)'
+  tableoid: 'users'
+  ctid: '(2,1)'
   id: 4
   email: "test4@test.test"
   first_name: "Benjamin"
   last_name: "Franklin"
   active: true
 users_005:
+  tableoid: 'users'
   ctid: '(2,5)'
   id: 5
   email: "test5@test.test"
@@ -35,6 +40,7 @@ users_005:
   last_name: "Khan"
   active: true
 users_006:
+  tableoid: 'users'
   ctid: '(2,6)'
   id: 6
   email: "test6@test.test"

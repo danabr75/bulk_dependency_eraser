@@ -1,65 +1,76 @@
 ---
 parts_001:
+  tableoid: 'parts'
   ctid: '(1,1)'
   id: 1
   partable_id: 1
   partable_type: Vehicle
   name: "Engine"
 parts_002:
+  tableoid: 'parts'
   ctid: '(1,2)'
   id: 2
   partable_id: 1
   partable_type: Part
   name: "Alternator"
 parts_003:
+  tableoid: 'parts'
   ctid: '(1,11)'
   id: 3
   partable_id: 1
   partable_type: Part
   name: "Radiator"
 parts_004:
+  tableoid: 'parts'
   ctid: '(1,3)'
   id: 4
   partable_id: 1
   partable_type: Part
   name: "Battery"
 parts_005:
+  tableoid: 'parts'
   ctid: '(1,4)'
   id: 5
   partable_id: 1
   partable_type: Vehicle
   name: "Frame"
 parts_006:
+  tableoid: 'parts'
   ctid: '(1,5)'
   id: 6
   partable_id: 3
   partable_type: Part
   name: "Radiator Fluid"
 parts_007:
+  tableoid: 'parts'
   ctid: '(1,6)'
   id: 7
   partable_id: 4
   partable_type: Part
   name: "Battery Case"
 parts_008:
+  tableoid: 'parts'
   ctid: '(1,7)'
   id: 8
   partable_id: 7
   partable_type: Part
   name: "Battery Case Handle"
 parts_009:
+  tableoid: 'parts'
   ctid: '(1,8)'
   id: 9
   partable_id: 4
   partable_type: Vehicle
   name: "Engine"
 parts_010:
+  tableoid: 'parts'
   ctid: '(1,9)'
   id: 10
   partable_id: 5
   partable_type: VehicleWithNoDependents
   name: "Custom Engine"
 parts_011:
+  tableoid: 'parts'
   ctid: '(1,10)'
   id: 11
   partable_id: 6
