@@ -327,7 +327,8 @@ module BulkDependencyEraser
         end
       end
 
-      if klass.primary_key != 'id'
+      valid_primary_key = klass.primary_key == 'id' || klass.primary_key.is_a?(Array) && klass.primary_key.include?('id')
+      unless valid_primary_key
         report_error(
           "#{klass.name} - does not use primary_key 'id'. Cannot use this tool to bulk delete."
         )
@@ -468,7 +469,8 @@ module BulkDependencyEraser
 
       assoc_query = assoc_klass.unscoped
 
-      unless assoc_klass.primary_key == 'id'
+      valid_primary_key = assoc_klass.primary_key == 'id' || assoc_klass.primary_key.is_a?(Array) && assoc_klass.primary_key.include?('id')
+      unless valid_primary_key
         report_error("#{parent_class.name}'s association '#{association_name}' - assoc class does not use 'id' as a primary_key")
         return
       end
@@ -589,7 +591,8 @@ module BulkDependencyEraser
 
       assoc_query = assoc_klass.unscoped
 
-      unless assoc_klass.primary_key == 'id'
+      valid_primary_key = assoc_klass.primary_key == 'id' || assoc_klass.primary_key.is_a?(Array) && assoc_klass.primary_key.include?('id')
+      unless valid_primary_key
         report_error("#{parent_class.name}'s association '#{association_name}' - assoc class does not use 'id' as a primary_key")
         return
       end
